@@ -268,11 +268,6 @@ const TtsServer = () => {
             <label>🔗 Custom Speaker Audio URL (Voice Clone):</label>
             <input 
               type="text" 
-              value={speakerWavUrl} 
-              onChange={(e) => {
-                setSpeakerWavUrl(e.target.value);
-                setSelectedLibraryVoiceId(''); // ketik manual = batalkan pilihan library
-              }}
               placeholder="https://example.com/voice.wav" 
               style={{ width: '100%', padding: '8px', boxSizing: 'border-box' }}
             />
