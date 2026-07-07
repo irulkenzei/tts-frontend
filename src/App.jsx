@@ -312,7 +312,7 @@ const TtsServer = () => {
       // Kalau model Replicate Anda strict cuma nerima .wav, perlu convert
       // dulu di sisi Function (pakai ffmpeg) sebelum dipakai sebagai
       // speaker_wav -- untuk sekarang langsung dipakai apa adanya.
-      const file = new File([recordedBlob], `recording-${Date.now()}.webm`, { type: 'audio/webm' });
+      const file = new File([recordedBlob], `web-recording-${Date.now()}.webm`, { type: 'audio/webm' });
 
       const uploadedFile = await storage.createFile(
         RECORDING_UPLOAD_BUCKET_ID,
@@ -355,10 +355,14 @@ const TtsServer = () => {
 
     setIsUploadingFile(true);
     try {
+      // Rename dengan prefix "web-" sebelum upload, biar gampang dibedain
+      // dari file yang di-upload lewat app mobile (bucket-nya sama-sama dipakai).
+      const renamedFile = new File([file], `web-${file.name}`, { type: file.type });
+
       const uploadedFile = await storage.createFile(
         RECORDING_UPLOAD_BUCKET_ID,
         ID.unique(),
-        file
+        renamedFile
       );
 
       const fileUrl = `https://fra.cloud.appwrite.io/v1/storage/buckets/${RECORDING_UPLOAD_BUCKET_ID}/files/${uploadedFile.$id}/view?project=6a3a48a1003d333b0268`;
