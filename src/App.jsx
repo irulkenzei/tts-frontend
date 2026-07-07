@@ -135,10 +135,23 @@ const TtsServer = () => {
           <div style={{ marginBottom: '15px' }}>
             <label>Language:</label><br/>
             <select value={language} onChange={(e) => setLanguage(e.target.value)} style={{ width: '100%', padding: '8px' }}>
-              <option value="id">Indonesian</option>
-              <option value="en">English</option>
-              <option value="ja">Japanese</option>
-              {/* Tambahkan bahasa lain sesuai kebutuhan */}
+                    <option value="en">English</option>
+                    <option value="es">Spanish</option>
+                    <option value="fr">French</option>
+                    <option value="de">German</option>
+                    <option value="it">Italian</option>
+                    <option value="pt">Portuguese</option>
+                    <option value="pl">Polish</option>
+                    <option value="tr">Turkish</option>
+                    <option value="ru">Russian</option>
+                    <option value="nl">Dutch</option>
+                    <option value="cs">Czech</option>
+                    <option value="ar">Arabic</option>
+                    <option value="zh-cn">Chinese</option>
+                    <option value="ja">Japanese</option>
+                    <option value="hu">Hungarian</option>
+                    <option value="ko">Korean</option>
+                    <option value="hi">Hindi</option> 
             </select>
           </div>
 
