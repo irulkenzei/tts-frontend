@@ -203,6 +203,9 @@ const TtsServer = () => {
             <select value={outputFormat} onChange={(e) => setOutputFormat(e.target.value)} style={{ width: '100%', padding: '8px' }}>
               <option value="wav">WAV</option>
               <option value="mp3">MP3</option>
+              <option value="ogg">OGG</option>
+              <option value="flac">FLAC</option>
+              <option value="m4a">M4A</option>
             </select>
           </div>
         </div>
