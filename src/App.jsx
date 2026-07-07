@@ -109,6 +109,29 @@ const TtsServer = () => {
   // Execution State
   const [isLoading, setIsLoading] = useState(false);
   const [generatedAudio, setGeneratedAudio] = useState(null);
+  const [generatedFileName, setGeneratedFileName] = useState(null);
+
+  // ⏱️ Timer live selama generate berlangsung -- elapsedMs di-update tiap
+  // 100ms lewat setInterval selama isLoading true. finalProcessTime dibekukan
+  // begitu generate selesai (sukses atau gagal), buat ditampilin di hasil.
+  const [elapsedMs, setElapsedMs] = useState(0);
+  const [finalProcessTime, setFinalProcessTime] = useState(null);
+  const timerIntervalRef = useRef(null);
+  const timerStartRef = useRef(null);
+
+  // ❤️ Like -- sekadar toggle visual lokal untuk sekarang (belum disimpan
+  // ke database manapun; kalau mau dipersist, perlu collection terpisah).
+  const [isLiked, setIsLiked] = useState(false);
+
+  // Format ms jadi "mm:ss.cc" (menit:detik.centidetik), sama kayak
+  // "00:40.30" di referensi UI
+  const formatDuration = (ms) => {
+    const totalCentiseconds = Math.floor(ms / 10);
+    const minutes = Math.floor(totalCentiseconds / 6000);
+    const seconds = Math.floor((totalCentiseconds % 6000) / 100);
+    const centiseconds = totalCentiseconds % 100;
+    return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}.${String(centiseconds).padStart(2, '0')}`;
+  };
 
   // 🔒 Sistem quota -- reuse collection `user_stats` yang sama dipakai app
   // mobile. Web ini pakai Appwrite Anonymous Session supaya tetap ada
@@ -405,6 +428,43 @@ const TtsServer = () => {
     }
   };
 
+  // 📤 Share file audio-nya LANGSUNG (bukan cuma link URL) -- pakai Web
+  // Share API dengan parameter `files`. Ini yang bikin di HP muncul opsi
+  // "share ke WhatsApp/dll" dengan file audio-nya beneran ke-attach,
+  // persis kayak behavior share di app mobile.
+  const handleShareAudio = async () => {
+    if (!generatedAudio) return;
+    try {
+      const response = await fetch(generatedAudio);
+      const blob = await response.blob();
+      const ext = outputFormat || 'wav';
+      const shareFile = new File([blob], generatedFileName || `narratorai-${Date.now()}.${ext}`, {
+        type: blob.type || 'audio/wav',
+      });
+
+      if (navigator.canShare && navigator.canShare({ files: [shareFile] })) {
+        await navigator.share({
+          files: [shareFile],
+          title: 'NarratorAI Voice Over',
+        });
+      } else {
+        // Fallback untuk browser yang nggak support share file (mis.
+        // sebagian besar browser desktop) -- turun ke download biasa,
+        // bukan share link (sesuai permintaan: yang di-share filenya,
+        // bukan link, jadi kalau nggak bisa share file, lebih baik
+        // download daripada nge-share link).
+        alert('Your browser does not support direct file sharing. The file will be downloaded instead.');
+        await handleDownloadAudio();
+      }
+    } catch (err) {
+      // User membatalkan share (AbortError) itu normal, jangan tampilkan sebagai error
+      if (err.name !== 'AbortError') {
+        console.error('Failed to share audio:', err);
+        alert('Failed to share audio: ' + err.message);
+      }
+    }
+  };
+
   // --- Logic Eksekusi ke Appwrite Function ---
   const handleGenerateSpeech = async (e) => {
     e.preventDefault();
@@ -466,6 +526,16 @@ const TtsServer = () => {
 
     setIsLoading(true);
     setGeneratedAudio(null);
+    setGeneratedFileName(null);
+    setFinalProcessTime(null);
+    setIsLiked(false);
+
+    // ⏱️ Mulai timer live -- update tiap 100ms selama proses generate berlangsung
+    setElapsedMs(0);
+    timerStartRef.current = Date.now();
+    timerIntervalRef.current = setInterval(() => {
+      setElapsedMs(Date.now() - timerStartRef.current);
+    }, 100);
 
     try {
 
@@ -564,6 +634,7 @@ const TtsServer = () => {
 
       if (data.success && data.audioUrl) {
         setGeneratedAudio(data.audioUrl);
+        setGeneratedFileName(data.fileName || null);
 
         // Increment generation_count di user_stats -- dilakukan setelah
         // sukses, bukan sebelum, biar percobaan yang gagal nggak ikut
@@ -589,6 +660,11 @@ const TtsServer = () => {
       console.error(err);
       alert("Error: " + err.message);
     } finally {
+      // ⏱️ Hentikan timer live dan bekukan waktu final proses
+      clearInterval(timerIntervalRef.current);
+      if (timerStartRef.current) {
+        setFinalProcessTime(Date.now() - timerStartRef.current);
+      }
       setIsLoading(false);
     }
   };
@@ -862,7 +938,7 @@ const TtsServer = () => {
               {checkingQuota
                 ? 'Checking quota...'
                 : isLoading
-                ? 'Generating Audio...'
+                ? `Generating... ${formatDuration(elapsedMs)}`
                 : isLimitReached
                 ? '⭐ Upgrade to Pro'
                 : '🎵 Generate Speech'}
@@ -877,24 +953,70 @@ const TtsServer = () => {
           {/* Area Hasil Audio */}
           {generatedAudio && (
             <div style={{ marginTop: '30px', padding: '20px', backgroundColor: '#e9f7ef', border: '1px solid #c3e6cb', borderRadius: '8px' }}>
-              <h3>✅ Audio Ready!</h3>
-              <audio src={generatedAudio} controls autoPlay style={{ width: '100%', marginTop: '10px' }} />
-              <button
-                onClick={handleDownloadAudio}
-                style={{
-                  marginTop: '12px',
-                  padding: '10px 20px',
-                  backgroundColor: '#28a745',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '4px',
-                  cursor: 'pointer',
-                  fontSize: '14px',
-                  fontWeight: 'bold',
-                }}
-              >
-                ⬇️ Download Audio
-              </button>
+              <div style={{ backgroundColor: '#28a745', color: 'white', padding: '12px', borderRadius: '6px', textAlign: 'center', fontWeight: 'bold' }}>
+                ✅ Generated successfully! (Processed Time: {finalProcessTime !== null ? formatDuration(finalProcessTime) : '--:--.--'})
+                {generatedFileName && (
+                  <>
+                    <br />
+                    File: {generatedFileName}
+                  </>
+                )}
+              </div>
+
+              <audio src={generatedAudio} controls autoPlay style={{ width: '100%', marginTop: '15px' }} />
+
+              <div style={{ display: 'flex', gap: '10px', marginTop: '12px' }}>
+                <button
+                  onClick={() => setIsLiked((prev) => !prev)}
+                  style={{
+                    flex: 1,
+                    padding: '10px',
+                    backgroundColor: isLiked ? '#ff4d6d' : '#e0e0e0',
+                    color: isLiked ? 'white' : 'black',
+                    border: 'none',
+                    borderRadius: '4px',
+                    cursor: 'pointer',
+                    fontSize: '14px',
+                    fontWeight: 'bold',
+                  }}
+                >
+                  {isLiked ? '❤️ Liked' : '🤍 Like'}
+                </button>
+
+                <button
+                  onClick={handleShareAudio}
+                  style={{
+                    flex: 1,
+                    padding: '10px',
+                    backgroundColor: '#007bff',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '4px',
+                    cursor: 'pointer',
+                    fontSize: '14px',
+                    fontWeight: 'bold',
+                  }}
+                >
+                  📤 Share
+                </button>
+
+                <button
+                  onClick={handleDownloadAudio}
+                  style={{
+                    flex: 1,
+                    padding: '10px',
+                    backgroundColor: '#28a745',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '4px',
+                    cursor: 'pointer',
+                    fontSize: '14px',
+                    fontWeight: 'bold',
+                  }}
+                >
+                  ⬇️ Download
+                </button>
+              </div>
             </div>
           )}
 
