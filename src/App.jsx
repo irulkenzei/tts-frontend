@@ -354,7 +354,7 @@ const TtsServer = () => {
                   onChange={(e) => setDialogueScript(e.target.value)}
                   rows="8" 
                   style={{ width: '100%', padding: '10px', boxSizing: 'border-box', marginTop: '5px' }}
-                  placeholder="[Speaker 1]: Halo...&#10;[Speaker 2]: Hai..."
+                  placeholder="[Adam]: I just finished testing that new mobile app Narator AI for my latest video project, and I am honestly blown away.&#10;[Anna]: Oh really? I have been skeptical about AI voices for a long time. Are they finally sounding natural?"
                 />
               </div>
             )}
