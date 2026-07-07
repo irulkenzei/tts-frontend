@@ -3,9 +3,12 @@ import { Client, Functions, Databases, Storage, ID, Query, Account } from 'appwr
 
 // 1. Inisialisasi Appwrite
 // Ganti dengan Project ID dan Endpoint Anda
+const APPWRITE_ENDPOINT = 'https://fra.cloud.appwrite.io/v1';
+const APPWRITE_PROJECT_ID = '6a3a48a1003d333b0268';
+
 const client = new Client()
-    .setEndpoint('https://fra.cloud.appwrite.io/v1')
-    .setProject('6a3a48a1003d333b0268');
+    .setEndpoint(APPWRITE_ENDPOINT)
+    .setProject(APPWRITE_PROJECT_ID);
 
 const appwriteFunctions = new Functions(client);
 const databases = new Databases(client);
@@ -438,14 +441,36 @@ const TtsServer = () => {
       // punya hard-cap 30 detik dari sisi API gateway-nya sendiri -- ini
       // TIDAK bisa diubah lewat setting "Timeout" di halaman Function.
       // Generate audio (apalagi dengan cold start container Replicate)
-      // hampir pasti lebih dari 30 detik, jadi WAJIB pakai async: true di
-      // sini, lalu polling status eksekusi secara manual sampai selesai.
-      const execution = await appwriteFunctions.createExecution({
-        functionId: FUNCTION_ID,
-        body: JSON.stringify(payload),
-        async: true,
-        method: 'POST',
-      });
+      // hampir pasti lebih dari 30 detik, jadi WAJIB pakai async: true.
+      //
+      // CATATAN: dipanggil lewat fetch() langsung ke REST API Appwrite,
+      // BUKAN lewat class Functions dari SDK -- ini sengaja, supaya nggak
+      // tergantung sama versi SDK yang parameter createExecution/
+      // getExecution-nya beda-beda (positional vs object) antar versi.
+      // REST API-nya sendiri stabil, jadi paling aman dipanggil manual.
+      const createExecRes = await fetch(
+        `${APPWRITE_ENDPOINT}/functions/${FUNCTION_ID}/executions`,
+        {
+          method: 'POST',
+          credentials: 'include', // kirim cookie session anonymous
+          headers: {
+            'X-Appwrite-Project': APPWRITE_PROJECT_ID,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            body: JSON.stringify(payload),
+            async: true,
+            method: 'POST',
+          }),
+        }
+      );
+
+      if (!createExecRes.ok) {
+        const errBody = await createExecRes.json().catch(() => ({}));
+        throw new Error(errBody.message || `Failed to start execution (status ${createExecRes.status})`);
+      }
+
+      const execution = await createExecRes.json();
 
       let currentExecution = execution;
       while (
@@ -454,10 +479,22 @@ const TtsServer = () => {
       ) {
         console.log('Execution status:', currentExecution.status);
         await new Promise((resolve) => setTimeout(resolve, 3000));
-        currentExecution = await appwriteFunctions.getExecution({
-          functionId: FUNCTION_ID,
-          executionId: execution.$id,
-        });
+
+        const getExecRes = await fetch(
+          `${APPWRITE_ENDPOINT}/functions/${FUNCTION_ID}/executions/${execution.$id}`,
+          {
+            method: 'GET',
+            credentials: 'include',
+            headers: { 'X-Appwrite-Project': APPWRITE_PROJECT_ID },
+          }
+        );
+
+        if (!getExecRes.ok) {
+          const errBody = await getExecRes.json().catch(() => ({}));
+          throw new Error(errBody.message || `Failed to poll execution (status ${getExecRes.status})`);
+        }
+
+        currentExecution = await getExecRes.json();
       }
 
       if (currentExecution.status === 'failed') {
