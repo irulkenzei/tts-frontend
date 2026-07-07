@@ -20,7 +20,7 @@ const SPEAKERS_COLLECTION_ID = 'speakers'; // collection yang sama dipakai app m
 // WAJIB punya permission "Read: Any" di Appwrite Console, karena Replicate
 // perlu bisa fetch URL file ini dari luar (public read, bukan cuma
 // authenticated user Anda sendiri).
-const RECORDING_UPLOAD_BUCKET_ID = 'GANTI_DENGAN_BUCKET_ID_ANDA';
+const RECORDING_UPLOAD_BUCKET_ID = '6a40a942000c72f7a8f1';
 
 const TtsServer = () => {
   // --- State Management ---
@@ -62,7 +62,7 @@ const TtsServer = () => {
         const response = await databases.listDocuments(DATABASE_ID, SPEAKERS_COLLECTION_ID);
         setVoiceLibrary(response.documents);
       } catch (err) {
-        console.error('Gagal ambil voice library:', err);
+        console.error('Failed to retrieve voice library:', err);
         // Tidak alert ke user -- kalau library gagal load, "Custom Speaker
         // Audio URL" tetap bisa dipakai manual sebagai fallback.
       } finally {
@@ -118,8 +118,8 @@ const TtsServer = () => {
         recorder.start();
         setIsRecording(true);
       } catch (err) {
-        console.error("Gagal akses mikrofon:", err);
-        alert("Pastikan Anda memberikan izin akses mikrofon.");
+        console.error("Failed to access microphone:", err);
+        alert("Ensure you grant microphone access permission..");
       }
     }
   };
@@ -132,8 +132,8 @@ const TtsServer = () => {
   const useRecordingAsReference = async () => {
     if (!recordedBlob) return;
 
-    if (RECORDING_UPLOAD_BUCKET_ID === 'GANTI_DENGAN_BUCKET_ID_ANDA') {
-      alert('Bucket ID belum di-set. Isi RECORDING_UPLOAD_BUCKET_ID di App.jsx dengan bucket ID yang punya permission "Read: Any".');
+    if (RECORDING_UPLOAD_BUCKET_ID === '6a40a942000c72f7a8f1') {
+      alert('Setup Bucket ID.');
       return;
     }
 
@@ -157,10 +157,10 @@ const TtsServer = () => {
 
       setSpeakerWavUrl(fileUrl);
       setSelectedLibraryVoiceId(''); // kosongkan pilihan library, karena sekarang pakai rekaman ini
-      alert('Rekaman berhasil diupload dan langsung dipakai sebagai referensi voice!');
+      alert('The recording was successfully uploaded and immediately used as a voice reference.!');
     } catch (err) {
-      console.error('Gagal upload rekaman:', err);
-      alert('Gagal upload rekaman: ' + err.message);
+      console.error('Failed to upload recording:', err);
+      alert('Failed to upload recording: ' + err.message);
     } finally {
       setIsUploadingRecording(false);
     }
@@ -196,7 +196,7 @@ const TtsServer = () => {
       if (data.success && data.audioUrl) {
         setGeneratedAudio(data.audioUrl);
       } else {
-        throw new Error(data.error || "Gagal menghasilkan audio dari Replicate.");
+        throw new Error(data.error || "Failed to generate audio from Source.");
       }
     } catch (err) {
       console.error(err);
@@ -259,7 +259,7 @@ const TtsServer = () => {
                 </option>
               ))}
             </select>
-            <small>Choose a saved voice from your Appwrite library.</small>
+            <small>Choose a saved voice from your library.</small>
           </div>
 
           <div style={{ textAlign: 'center', color: '#999', margin: '10px 0' }}>OR</div>
@@ -343,7 +343,7 @@ const TtsServer = () => {
                   onChange={(e) => setText(e.target.value)}
                   rows="8" 
                   style={{ width: '100%', padding: '10px', boxSizing: 'border-box', marginTop: '5px' }}
-                  placeholder="Masukkan naskah voice over Anda di sini..."
+                  placeholder="Type or Paste your text here, wait until magic come...."
                 />
               </div>
             ) : (
