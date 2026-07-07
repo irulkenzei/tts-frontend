@@ -376,14 +376,39 @@ const TtsServer = () => {
     }
   };
 
+  const handleDownloadAudio = async () => {
+    if (!generatedAudio) return;
+    try {
+      // Fetch lalu download via blob -- lebih reliable daripada <a href download>
+      // langsung, karena beberapa server (termasuk Replicate) kadang tidak
+      // mengirim header Content-Disposition yang diperlukan supaya browser
+      // otomatis download (bukan cuma buka di tab baru).
+      const response = await fetch(generatedAudio);
+      const blob = await response.blob();
+      const blobUrl = URL.createObjectURL(blob);
+
+      const ext = outputFormat || 'wav';
+      const link = document.createElement('a');
+      link.href = blobUrl;
+      link.download = `narratorai-${Date.now()}.${ext}`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(blobUrl);
+    } catch (err) {
+      console.error('Failed to download audio:', err);
+      alert('Failed to download audio: ' + err.message);
+    }
+  };
+
   // --- Logic Eksekusi ke Appwrite Function ---
   const handleGenerateSpeech = async (e) => {
     e.preventDefault();
     if (isLimitReached) {
       return alert('You have reached the free generation limit. Please upgrade to continue.');
     }
-    if (mode === 'single' && !text) return alert("Teks tidak boleh kosong!");
-    if (mode === 'dialogue' && !dialogueScript) return alert("Dialogue script tidak boleh kosong!");
+    if (mode === 'single' && !text) return alert("Text cannot be empty!");
+    if (mode === 'dialogue' && !dialogueScript) return alert("Dialogue script cannot be empty!");
 
     // Siapkan payload spesifik per mode SEBELUM setIsLoading(true), supaya
     // validasi yang gagal (speaker belum lengkap, dll) tidak sempat
@@ -502,6 +527,33 @@ const TtsServer = () => {
 
       if (currentExecution.status === 'failed') {
         throw new Error('Function execution failed. Check Appwrite Console logs for details.');
+      }
+
+      // 🛡️ Kadang status sudah "completed" tapi responseBody-nya masih
+      // kosong sesaat (race condition/eventual consistency di sisi
+      // Appwrite -- status ke-update duluan sebelum body-nya kesimpen).
+      // Retry re-fetch beberapa kali sebelum nyerah, daripada langsung
+      // JSON.parse('') yang bakal ngelempar "Unexpected end of JSON input".
+      let retries = 0;
+      while (!currentExecution.responseBody?.trim() && retries < 5) {
+        console.log('responseBody still empty, retrying fetch...', retries);
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+        const retryRes = await fetch(
+          `${APPWRITE_ENDPOINT}/functions/${FUNCTION_ID}/executions/${execution.$id}`,
+          {
+            method: 'GET',
+            credentials: 'include',
+            headers: { 'X-Appwrite-Project': APPWRITE_PROJECT_ID },
+          }
+        );
+        if (retryRes.ok) {
+          currentExecution = await retryRes.json();
+        }
+        retries++;
+      }
+
+      if (!currentExecution.responseBody?.trim()) {
+        throw new Error('Execution completed but returned an empty response. Check Appwrite Console logs for details.');
       }
 
       const data = JSON.parse(currentExecution.responseBody);
@@ -762,6 +814,15 @@ const TtsServer = () => {
               </div>
             )}
 
+            {/* Animasi spinner buat tombol Generate -- inline <style> karena
+                project ini nggak pakai CSS file terpisah/CSS-in-JS library. */}
+            <style>{`
+              @keyframes narratorai-spin {
+                from { transform: rotate(0deg); }
+                to { transform: rotate(360deg); }
+              }
+            `}</style>
+
             <button 
               type="submit" 
               disabled={isLoading || checkingQuota}
@@ -772,14 +833,32 @@ const TtsServer = () => {
                 border: 'none',
                 borderRadius: '4px',
                 marginTop: '15px',
-                cursor: 'pointer',
+                cursor: isLoading || checkingQuota ? 'not-allowed' : 'pointer',
                 fontSize: '16px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '10px',
+                opacity: isLoading || checkingQuota ? 0.85 : 1,
               }}
             >
+              {(isLoading || checkingQuota) && (
+                <span
+                  style={{
+                    display: 'inline-block',
+                    width: '16px',
+                    height: '16px',
+                    border: '2px solid rgba(255,255,255,0.4)',
+                    borderTopColor: '#fff',
+                    borderRadius: '50%',
+                    animation: 'narratorai-spin 0.8s linear infinite',
+                  }}
+                />
+              )}
               {checkingQuota
-                ? '⏳ Checking quota...'
+                ? 'Checking quota...'
                 : isLoading
-                ? '⏳ Generating Audio...'
+                ? 'Generating Audio...'
                 : isLimitReached
                 ? '⭐ Upgrade to Pro'
                 : '🎵 Generate Speech'}
@@ -794,8 +873,24 @@ const TtsServer = () => {
           {/* Area Hasil Audio */}
           {generatedAudio && (
             <div style={{ marginTop: '30px', padding: '20px', backgroundColor: '#e9f7ef', border: '1px solid #c3e6cb', borderRadius: '8px' }}>
-              <h3>✅ Audio Siap!</h3>
+              <h3>✅ Audio Ready!</h3>
               <audio src={generatedAudio} controls autoPlay style={{ width: '100%', marginTop: '10px' }} />
+              <button
+                onClick={handleDownloadAudio}
+                style={{
+                  marginTop: '12px',
+                  padding: '10px 20px',
+                  backgroundColor: '#28a745',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  fontSize: '14px',
+                  fontWeight: 'bold',
+                }}
+              >
+                ⬇️ Download Audio
+              </button>
             </div>
           )}
 
