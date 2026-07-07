@@ -56,7 +56,10 @@ function parseSpeakersFromScript(script) {
 const TtsServer = () => {
   // --- State Management ---
   const [mode, setMode] = useState('single');
-  const [language, setLanguage] = useState('id'); // Default bahasa Indonesia
+  // ⚠️ XTTS v2 TIDAK mendukung Bahasa Indonesia ('id') sebagai kode bahasa --
+  // dropdown di bawah cuma berisi bahasa yang benar-benar didukung model.
+  // Default 'en' karena itu yang paling universal/aman.
+  const [language, setLanguage] = useState('en');
   const [speed, setSpeed] = useState(1.0);
   const [temperature, setTemperature] = useState(0.7);
   const [outputFormat, setOutputFormat] = useState('wav');
