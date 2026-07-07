@@ -454,7 +454,10 @@ const TtsServer = () => {
       ) {
         console.log('Execution status:', currentExecution.status);
         await new Promise((resolve) => setTimeout(resolve, 3000));
-        currentExecution = await appwriteFunctions.getExecution(FUNCTION_ID, execution.$id);
+        currentExecution = await appwriteFunctions.getExecution({
+          functionId: FUNCTION_ID,
+          executionId: execution.$id,
+        });
       }
 
       if (currentExecution.status === 'failed') {
