@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { Client, Functions, Databases, Storage, ID } from 'appwrite';
+import { Client, Functions, Databases, Storage, ID, Query, Account } from 'appwrite';
 
 // 1. Inisialisasi Appwrite
 // Ganti dengan Project ID dan Endpoint Anda
@@ -10,12 +10,15 @@ const client = new Client()
 const appwriteFunctions = new Functions(client);
 const databases = new Databases(client);
 const storage = new Storage(client);
+const account = new Account(client);
 const FUNCTION_ID = '6a4bedd10009fe338821'; // Ganti dengan ID fungsi Replicate Anda
 
 // 🗂️ Konfigurasi database & storage untuk fitur Voice Library dan Upload
 // Rekaman -- SESUAIKAN nilai-nilai ini dengan project Appwrite Anda.
 const DATABASE_ID = 'naratorai'; // ganti kalau database ID Anda beda
 const SPEAKERS_COLLECTION_ID = 'speakers'; // collection yang sama dipakai app mobile
+const USER_STATS_COLLECTION_ID = 'user_stats'; // collection quota yang sama dipakai app mobile
+const MAX_FREE_GENERATIONS = 2; // sama persis limit di app mobile
 // Bucket untuk upload hasil rekaman suara sebagai referensi speaker baru --
 // WAJIB punya permission "Read: Any" di Appwrite Console, karena Replicate
 // perlu bisa fetch URL file ini dari luar (public read, bukan cuma
@@ -91,18 +94,91 @@ const TtsServer = () => {
   const [isRecording, setIsRecording] = useState(false);
   const [recordedUrl, setRecordedUrl] = useState(null);
   const [recordedBlob, setRecordedBlob] = useState(null);
+  const [recordingSeconds, setRecordingSeconds] = useState(0);
   const mediaRecorderRef = useRef(null);
   const audioChunksRef = useRef([]);
+  const recordingTimerRef = useRef(null);
+  const MAX_RECORDING_SECONDS = 30;
 
   // Execution State
   const [isLoading, setIsLoading] = useState(false);
   const [generatedAudio, setGeneratedAudio] = useState(null);
 
+  // 🔒 Sistem quota -- reuse collection `user_stats` yang sama dipakai app
+  // mobile. Web ini pakai Appwrite Anonymous Session supaya tetap ada
+  // "userId" yang konsisten antar reload, tanpa perlu login manual.
+  const [userId, setUserId] = useState(null);
+  const [generationCount, setGenerationCount] = useState(0);
+  const [statsDocId, setStatsDocId] = useState(null);
+  const [checkingQuota, setCheckingQuota] = useState(true);
+  const isLimitReached = generationCount >= MAX_FREE_GENERATIONS;
+
+  // --- Restore/buat Anonymous Session + sync quota dari `user_stats` ---
+  // Session anonymous dipakai supaya ada "userId" yang konsisten antar
+  // reload browser (session-nya nyangkut di cookie), tanpa perlu bikin
+  // sistem login. Reuse persis collection `user_stats` yang sudah dipakai
+  // app mobile untuk quota generate.
+  useEffect(() => {
+    const initUserAndQuota = async () => {
+      try {
+        let currentUserId;
+        try {
+          const currentAccount = await account.get();
+          currentUserId = currentAccount.$id;
+        } catch (notLoggedInErr) {
+          // Belum ada session -- buat anonymous session baru
+          await account.createAnonymousSession();
+          const newAccount = await account.get();
+          currentUserId = newAccount.$id;
+        }
+        setUserId(currentUserId);
+
+        // Cari dokumen user_stats untuk user ini
+        const statsResponse = await databases.listDocuments(
+          DATABASE_ID,
+          USER_STATS_COLLECTION_ID,
+          [Query.equal('user_id', currentUserId), Query.limit(1)]
+        );
+
+        if (statsResponse.documents.length > 0) {
+          const doc = statsResponse.documents[0];
+          setStatsDocId(doc.$id);
+          setGenerationCount(doc.generation_count || 0);
+        } else {
+          // Belum ada dokumen quota untuk user ini -- buat baru dengan count 0
+          const newDoc = await databases.createDocument(
+            DATABASE_ID,
+            USER_STATS_COLLECTION_ID,
+            ID.unique(),
+            { user_id: currentUserId, generation_count: 0, clone_count: 0 }
+          );
+          setStatsDocId(newDoc.$id);
+          setGenerationCount(0);
+        }
+      } catch (err) {
+        console.error('Failed to init user/quota:', err);
+        // Kalau gagal (mis. collection belum ada), biarkan generationCount
+        // tetap 0 -- user tetap bisa coba generate, cuma quota-nya nggak
+        // ke-track dengan benar sampai masalahnya diperbaiki.
+      } finally {
+        setCheckingQuota(false);
+      }
+    };
+    initUserAndQuota();
+  }, []);
+
   // --- Ambil Voice Library dari Appwrite (collection yang sama dipakai app mobile) ---
   useEffect(() => {
     const fetchVoiceLibrary = async () => {
       try {
-        const response = await databases.listDocuments(DATABASE_ID, SPEAKERS_COLLECTION_ID);
+        // Query.limit default Appwrite cuma 25 dokumen -- kalau nggak
+        // di-set eksplisit, cuma 25 speaker pertama yang kemuat walau
+        // total speaker Anda 199. Naikin ke 500 biar semua kemuat aman.
+        const response = await databases.listDocuments(
+          DATABASE_ID,
+          SPEAKERS_COLLECTION_ID,
+          [Query.limit(500)]
+        );
         setVoiceLibrary(response.documents);
       } catch (err) {
         console.error('Failed to retrieve voice library:', err);
@@ -170,6 +246,7 @@ const TtsServer = () => {
     if (isRecording) {
       mediaRecorderRef.current.stop();
       setIsRecording(false);
+      clearInterval(recordingTimerRef.current);
     } else {
       try {
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -186,10 +263,27 @@ const TtsServer = () => {
           setRecordedBlob(blob);
           setRecordedUrl(URL.createObjectURL(blob));
           stream.getTracks().forEach(track => track.stop()); // Matikan mic
+          clearInterval(recordingTimerRef.current);
         };
 
         recorder.start();
         setIsRecording(true);
+        setRecordingSeconds(0);
+
+        // ⏱️ Timer 1 detik + auto-stop di batas MAX_RECORDING_SECONDS (30s)
+        // -- pakai functional update (prev => prev + 1) supaya closure-nya
+        // selalu baca nilai terbaru, bukan nilai stale dari saat interval dibuat.
+        recordingTimerRef.current = setInterval(() => {
+          setRecordingSeconds((prev) => {
+            const next = prev + 1;
+            if (next >= MAX_RECORDING_SECONDS) {
+              recorder.stop();
+              setIsRecording(false);
+              clearInterval(recordingTimerRef.current);
+            }
+            return next;
+          });
+        }, 1000);
       } catch (err) {
         console.error("Failed to access microphone:", err);
         alert("Ensure you grant microphone access permission..");
@@ -279,6 +373,9 @@ const TtsServer = () => {
   // --- Logic Eksekusi ke Appwrite Function ---
   const handleGenerateSpeech = async (e) => {
     e.preventDefault();
+    if (isLimitReached) {
+      return alert('You have reached the free generation limit. Please upgrade to continue.');
+    }
     if (mode === 'single' && !text) return alert("Teks tidak boleh kosong!");
     if (mode === 'dialogue' && !dialogueScript) return alert("Dialogue script tidak boleh kosong!");
 
@@ -368,6 +465,24 @@ const TtsServer = () => {
 
       if (data.success && data.audioUrl) {
         setGeneratedAudio(data.audioUrl);
+
+        // Increment generation_count di user_stats -- dilakukan setelah
+        // sukses, bukan sebelum, biar percobaan yang gagal nggak ikut
+        // makan quota gratis user.
+        if (statsDocId) {
+          try {
+            const newCount = generationCount + 1;
+            await databases.updateDocument(
+              DATABASE_ID,
+              USER_STATS_COLLECTION_ID,
+              statsDocId,
+              { generation_count: newCount }
+            );
+            setGenerationCount(newCount);
+          } catch (quotaErr) {
+            console.error('Failed to update generation count:', quotaErr);
+          }
+        }
       } else {
         throw new Error(data.error || "Failed to generate audio from Source.");
       }
@@ -471,6 +586,13 @@ const TtsServer = () => {
              <button onClick={toggleRecording} style={{ padding: '8px', backgroundColor: isRecording ? '#d9363e' : '#e0e0e0', color: isRecording ? 'white' : 'black' }}>
                 {isRecording ? "⏹️ Stop Recording" : "⏺️ Start Recording"}
              </button>
+             {isRecording && (
+               <span style={{ marginLeft: '10px', fontWeight: 'bold', color: recordingSeconds >= MAX_RECORDING_SECONDS - 5 ? '#d9363e' : '#333' }}>
+                 {String(Math.floor(recordingSeconds / 60)).padStart(2, '0')}:{String(recordingSeconds % 60).padStart(2, '0')} / 00:{MAX_RECORDING_SECONDS}
+               </span>
+             )}
+             <br/>
+             <small>Maximum {MAX_RECORDING_SECONDS} seconds per recording -- will stop automatically.</small>
              
              {recordedUrl && (
                <div style={{ marginTop: '10px' }}>
@@ -599,11 +721,31 @@ const TtsServer = () => {
 
             <button 
               type="submit" 
-              disabled={isLoading}
-              style={{ padding: '12px 24px', backgroundColor: '#28a745', color: 'white', border: 'none', borderRadius: '4px', marginTop: '15px', cursor: 'pointer', fontSize: '16px' }}
+              disabled={isLoading || checkingQuota}
+              style={{
+                padding: '12px 24px',
+                backgroundColor: isLimitReached ? '#9D4EDD' : '#28a745',
+                color: 'white',
+                border: 'none',
+                borderRadius: '4px',
+                marginTop: '15px',
+                cursor: 'pointer',
+                fontSize: '16px',
+              }}
             >
-              {isLoading ? '⏳ Generating Audio...' : '🎵 Generate Speech'}
+              {checkingQuota
+                ? '⏳ Checking quota...'
+                : isLoading
+                ? '⏳ Generating Audio...'
+                : isLimitReached
+                ? '⭐ Upgrade to Pro'
+                : '🎵 Generate Speech'}
             </button>
+            {!checkingQuota && !isLimitReached && (
+              <small style={{ display: 'block', marginTop: '6px', color: '#666' }}>
+                {generationCount} / {MAX_FREE_GENERATIONS} free generations used
+              </small>
+            )}
           </form>
 
           {/* Area Hasil Audio */}
