@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { Client, Functions, Databases, Storage, ID } from 'appwrite';
 
 // 1. Inisialisasi Appwrite
@@ -22,14 +22,45 @@ const SPEAKERS_COLLECTION_ID = 'speakers'; // collection yang sama dipakai app m
 // authenticated user Anda sendiri).
 const RECORDING_UPLOAD_BUCKET_ID = '6a40a942000c72f7a8f1';
 
+// 🎭 Deteksi nama speaker unik dari skrip dialog, urutan sesuai kemunculan
+// pertama. Pattern regex ini SENGAJA disamakan persis dengan yang dipakai
+// di predict.py & app mobile, supaya konsisten di semua platform. Nambah
+// speaker baru cukup dengan menulis nama baru di skrip -- otomatis scale
+// ke berapa pun yang terdeteksi, tidak dibatasi ke 2/3 speaker.
+function parseSpeakersFromScript(script) {
+  const names = [];
+  const seen = new Set();
+  const tagPattern = /^\[([^\]]+)\]:/;
+
+  script.split(/\r?\n/).forEach((rawLine) => {
+    const line = rawLine.trim();
+    const match = line.match(tagPattern);
+    if (match) {
+      const name = match[1].trim();
+      if (!seen.has(name)) {
+        seen.add(name);
+        names.push(name);
+      }
+    }
+  });
+
+  return names;
+}
+
 const TtsServer = () => {
   // --- State Management ---
   const [mode, setMode] = useState('single');
   const [language, setLanguage] = useState('id'); // Default bahasa Indonesia
-  const [speakerWavUrl, setSpeakerWavUrl] = useState('');
   const [speed, setSpeed] = useState(1.0);
   const [temperature, setTemperature] = useState(0.7);
   const [outputFormat, setOutputFormat] = useState('wav');
+
+  // 🎙️ Referensi speaker bisa dari 3 sumber: pilih dari library, ketik URL
+  // manual, atau hasil upload rekaman. `voiceSource` nentuin mana yang
+  // dipakai untuk generate -- library & custom TIDAK saling auto-isi,
+  // biar custom URL murni manual sesuai request.
+  const [customUrlText, setCustomUrlText] = useState('');
+  const [voiceSource, setVoiceSource] = useState(''); // 'library' | 'custom' | ''
 
   // 🎵 Voice Library -- daftar speaker dari collection Appwrite yang sama
   // dipakai app mobile.
@@ -39,10 +70,22 @@ const TtsServer = () => {
 
   // 📤 Status upload rekaman ke Appwrite Storage
   const [isUploadingRecording, setIsUploadingRecording] = useState(false);
+  // 📤 Status upload file .wav lokal yang dipilih user (fitur terpisah dari rekaman)
+  const [isUploadingFile, setIsUploadingFile] = useState(false);
   
   // Text Input
   const [text, setText] = useState('');
   const [dialogueScript, setDialogueScript] = useState('');
+
+  // 🎭 Assignment voice per speaker di mode dialog -- key: nama speaker,
+  // value: { source: 'library'|'custom', libraryId, customUrl }
+  const [speakerAssignments, setSpeakerAssignments] = useState({});
+
+  // Deteksi live nama-nama speaker dari skrip, dihitung ulang tiap skrip berubah
+  const detectedSpeakerNames = useMemo(
+    () => parseSpeakersFromScript(dialogueScript),
+    [dialogueScript]
+  );
 
   // Recording State
   const [isRecording, setIsRecording] = useState(false);
@@ -72,24 +115,54 @@ const TtsServer = () => {
     fetchVoiceLibrary();
   }, []);
 
-  // Ketika user pilih voice dari dropdown library, isi otomatis
-  // speakerWavUrl-nya. NOTE: field nama/URL ini menyesuaikan skema
-  // collection `speakers` Anda -- kalau nama attribute-nya beda (misal
-  // "audio_url" bukan "sample_url"), sesuaikan baris di bawah ini.
+  // Ketika user pilih voice dari dropdown library, nggak isi/sentuh
+  // customUrlText sama sekali -- itu tetep murni manual. Cukup catat
+  // sumbernya via voiceSource, URL asli-nya diambil ulang saat generate.
   const handleSelectLibraryVoice = (e) => {
     const voiceId = e.target.value;
     setSelectedLibraryVoiceId(voiceId);
+    setVoiceSource(voiceId ? 'library' : '');
+  };
 
-    if (!voiceId) {
-      setSpeakerWavUrl('');
-      return;
-    }
+  // Ambil URL audio dari voice library yang lagi dipilih (kalau ada)
+  const getLibraryVoiceUrl = () => {
+    const voice = voiceLibrary.find((v) => v.$id === selectedLibraryVoiceId);
+    if (!voice) return '';
+    return voice.sample_url || voice.audio_url || voice.voice_url || voice.value || '';
+  };
 
-    const voice = voiceLibrary.find((v) => v.$id === voiceId);
-    if (voice) {
-      const url = voice.sample_url || voice.audio_url || voice.voice_url || voice.value || '';
-      setSpeakerWavUrl(url);
+  // 🎭 Ambil URL library dari sebuah ID (helper generik, dipakai untuk voice
+  // utama maupun assignment per-speaker di mode dialog)
+  const getLibraryUrlById = (libraryId) => {
+    const voice = voiceLibrary.find((v) => v.$id === libraryId);
+    if (!voice) return '';
+    return voice.sample_url || voice.audio_url || voice.voice_url || voice.value || '';
+  };
+
+  // Assign voice untuk 1 speaker di mode dialog -- dari dropdown library
+  const handleAssignSpeakerLibrary = (name, libraryId) => {
+    setSpeakerAssignments((prev) => ({
+      ...prev,
+      [name]: { ...(prev[name] || {}), source: 'library', libraryId },
+    }));
+  };
+
+  // Assign voice untuk 1 speaker di mode dialog -- dari ketik URL manual
+  const handleAssignSpeakerCustomUrl = (name, url) => {
+    setSpeakerAssignments((prev) => ({
+      ...prev,
+      [name]: { ...(prev[name] || {}), source: 'custom', customUrl: url },
+    }));
+  };
+
+  // URL final yang dipakai untuk 1 speaker, sesuai source yang lagi aktif
+  const getSpeakerVoiceUrl = (name) => {
+    const assignment = speakerAssignments[name];
+    if (!assignment) return '';
+    if (assignment.source === 'library') {
+      return getLibraryUrlById(assignment.libraryId);
     }
+    return assignment.customUrl || '';
   };
 
   // --- Logic Perekam Suara (Voice Cloning Reference) ---
@@ -132,11 +205,6 @@ const TtsServer = () => {
   const useRecordingAsReference = async () => {
     if (!recordedBlob) return;
 
-    if (RECORDING_UPLOAD_BUCKET_ID === '6a40a942000c72f7a8f1') {
-      alert('Setup Bucket ID.');
-      return;
-    }
-
     setIsUploadingRecording(true);
     try {
       // Browser MediaRecorder biasanya keluarin format webm, bukan wav --
@@ -155,8 +223,11 @@ const TtsServer = () => {
       // Bangun URL publik file ini -- format standar Appwrite Storage view URL.
       const fileUrl = `https://fra.cloud.appwrite.io/v1/storage/buckets/${RECORDING_UPLOAD_BUCKET_ID}/files/${uploadedFile.$id}/view?project=6a3a48a1003d333b0268`;
 
-      setSpeakerWavUrl(fileUrl);
-      setSelectedLibraryVoiceId(''); // kosongkan pilihan library, karena sekarang pakai rekaman ini
+      // Rekaman diperlakukan sebagai "custom URL" (bukan bagian dari
+      // library) -- isi customUrlText & set source-nya ke 'custom'.
+      setCustomUrlText(fileUrl);
+      setVoiceSource('custom');
+      setSelectedLibraryVoiceId(''); // reset visual dropdown library
       alert('The recording was successfully uploaded and immediately used as a voice reference.!');
     } catch (err) {
       console.error('Failed to upload recording:', err);
@@ -166,32 +237,134 @@ const TtsServer = () => {
     }
   };
 
+  // --- Pilih file .wav dari komputer lokal ---
+  // Path lokal (mis. /Users/nama/voice.wav) TIDAK bisa langsung dipakai
+  // sebagai speaker_wav karena Replicate cuma bisa fetch URL publik lewat
+  // internet, bukan baca file dari komputer Anda. Jadi begitu user pilih
+  // file, langsung di-upload ke Appwrite Storage (bucket yang sama dengan
+  // rekaman), dan URL hasil upload itu yang dipakai -- bukan path lokalnya.
+  const handleLocalFileSelect = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.name.toLowerCase().endsWith('.wav')) {
+      alert('Please select a .wav file.');
+      e.target.value = ''; // reset input biar bisa pilih ulang
+      return;
+    }
+
+    setIsUploadingFile(true);
+    try {
+      const uploadedFile = await storage.createFile(
+        RECORDING_UPLOAD_BUCKET_ID,
+        ID.unique(),
+        file
+      );
+
+      const fileUrl = `https://fra.cloud.appwrite.io/v1/storage/buckets/${RECORDING_UPLOAD_BUCKET_ID}/files/${uploadedFile.$id}/view?project=6a3a48a1003d333b0268`;
+
+      setCustomUrlText(fileUrl);
+      setVoiceSource('custom');
+      setSelectedLibraryVoiceId('');
+      alert(`"${file.name}" uploaded successfully and is now used as the voice reference!`);
+    } catch (err) {
+      console.error('Failed to upload local file:', err);
+      alert('Failed to upload file: ' + err.message);
+    } finally {
+      setIsUploadingFile(false);
+      e.target.value = ''; // reset input, biar bisa pilih file yang sama lagi kalau perlu
+    }
+  };
+
   // --- Logic Eksekusi ke Appwrite Function ---
   const handleGenerateSpeech = async (e) => {
     e.preventDefault();
-    if (!text && mode === 'single') return alert("Teks tidak boleh kosong!");
+    if (mode === 'single' && !text) return alert("Teks tidak boleh kosong!");
+    if (mode === 'dialogue' && !dialogueScript) return alert("Dialogue script tidak boleh kosong!");
+
+    // Siapkan payload spesifik per mode SEBELUM setIsLoading(true), supaya
+    // validasi yang gagal (speaker belum lengkap, dll) tidak sempat
+    // nge-lock tombol generate.
+    let payload;
+
+    if (mode === 'dialogue') {
+      if (detectedSpeakerNames.length === 0) {
+        return alert('No speakers detected. Use the format [Name]: text... for each line.');
+      }
+      const missing = detectedSpeakerNames.filter((name) => !getSpeakerVoiceUrl(name));
+      if (missing.length > 0) {
+        return alert(`Please assign a voice for: ${missing.join(', ')}`);
+      }
+
+      const speakerMap = {};
+      detectedSpeakerNames.forEach((name) => {
+        speakerMap[name] = getSpeakerVoiceUrl(name);
+      });
+
+      payload = {
+        mode,
+        text: dialogueScript,
+        speaker_map: speakerMap,
+        language,
+        speed: parseFloat(speed),
+        temperature: parseFloat(temperature),
+        output_format: outputFormat,
+      };
+    } else {
+      // Tentukan URL speaker final berdasarkan sumber yang lagi aktif --
+      // library dan custom URL sengaja TIDAK saling override otomatis,
+      // voiceSource yang nentuin mana yang beneran dipakai untuk generate.
+      const finalSpeakerWavUrl =
+        voiceSource === 'library' ? getLibraryVoiceUrl() : customUrlText;
+
+      if (!finalSpeakerWavUrl) {
+        return alert('Please select a voice from the library, enter a custom URL, or record your voice first.');
+      }
+
+      payload = {
+        mode,
+        text,
+        speaker_wav: finalSpeakerWavUrl,
+        language,
+        speed: parseFloat(speed),
+        temperature: parseFloat(temperature),
+        output_format: outputFormat,
+      };
+    }
 
     setIsLoading(true);
     setGeneratedAudio(null);
 
     try {
-      // Payload ini akan dikirim ke fungsi Node.js di Appwrite
-      const payload = {
-        mode,
-        text: mode === 'single' ? text : dialogueScript,
-        language,
-        speed: parseFloat(speed),
-        temperature: parseFloat(temperature),
-        output_format: outputFormat,
-        speaker_wav: speakerWavUrl // URL referensi suara untuk cloning
-      };
 
-      const result = await appwriteFunctions.createExecution(
-        FUNCTION_ID,
-        JSON.stringify(payload)
-      );
+      // ⏱️ PENTING: eksekusi SYNCHRONOUS (async: false, default) di Appwrite
+      // punya hard-cap 30 detik dari sisi API gateway-nya sendiri -- ini
+      // TIDAK bisa diubah lewat setting "Timeout" di halaman Function.
+      // Generate audio (apalagi dengan cold start container Replicate)
+      // hampir pasti lebih dari 30 detik, jadi WAJIB pakai async: true di
+      // sini, lalu polling status eksekusi secara manual sampai selesai.
+      const execution = await appwriteFunctions.createExecution({
+        functionId: FUNCTION_ID,
+        body: JSON.stringify(payload),
+        async: true,
+        method: 'POST',
+      });
 
-      const data = JSON.parse(result.responseBody);
+      let currentExecution = execution;
+      while (
+        currentExecution.status !== 'completed' &&
+        currentExecution.status !== 'failed'
+      ) {
+        console.log('Execution status:', currentExecution.status);
+        await new Promise((resolve) => setTimeout(resolve, 3000));
+        currentExecution = await appwriteFunctions.getExecution(FUNCTION_ID, execution.$id);
+      }
+
+      if (currentExecution.status === 'failed') {
+        throw new Error('Function execution failed. Check Appwrite Console logs for details.');
+      }
+
+      const data = JSON.parse(currentExecution.responseBody);
 
       if (data.success && data.audioUrl) {
         setGeneratedAudio(data.audioUrl);
@@ -268,10 +441,29 @@ const TtsServer = () => {
             <label>🔗 Custom Speaker Audio URL (Voice Clone):</label>
             <input 
               type="text" 
-              placeholder="https://example.com/voice.wav" 
+              value={customUrlText} 
+              onChange={(e) => {
+                setCustomUrlText(e.target.value);
+                setVoiceSource('custom');
+              }}
+              placeholder="https://example.com/voice.wav or /path/to/file.wav" 
               style={{ width: '100%', padding: '8px', boxSizing: 'border-box' }}
             />
             <small>Supports .WAV only.</small>
+          </div>
+
+          <div style={{ marginBottom: '15px' }}>
+            <label>📁 Or Select File from Computer:</label><br/>
+            <input
+              type="file"
+              accept=".wav,audio/wav"
+              onChange={handleLocalFileSelect}
+              disabled={isUploadingFile}
+              style={{ width: '100%', padding: '8px', backgroundColor: 'white', border: '1px solid #ccc', borderRadius: '4px' }}
+            />
+            {isUploadingFile && <small>⏳ Uploading file...</small>}
+            <br/>
+            <small>Picks a .wav file from your computer, uploads it automatically, and uses it as the voice reference.</small>
           </div>
 
           <div style={{ marginBottom: '15px' }}>
@@ -356,6 +548,52 @@ const TtsServer = () => {
                   style={{ width: '100%', padding: '10px', boxSizing: 'border-box', marginTop: '5px' }}
                   placeholder="[Adam]: I just finished testing that new mobile app Narator AI for my latest video project, and I am honestly blown away.&#10;[Anna]: Oh really? I have been skeptical about AI voices for a long time. Are they finally sounding natural?"
                 />
+
+                {/* 🎭 Kartu assignment voice, muncul otomatis begitu ada
+                    nama speaker terdeteksi dari skrip -- reuse voiceLibrary
+                    yang sama dengan mode single-voice. */}
+                {detectedSpeakerNames.length > 0 && (
+                  <div style={{ marginTop: '15px', padding: '15px', backgroundColor: '#f0f8ff', border: '1px solid #cce4ff', borderRadius: '8px' }}>
+                    <label style={{ fontWeight: 'bold' }}>🎭 Assign Voice per Speaker:</label>
+                    {detectedSpeakerNames.map((name) => {
+                      const assignment = speakerAssignments[name] || {};
+                      const hasVoice = !!getSpeakerVoiceUrl(name);
+                      return (
+                        <div
+                          key={name}
+                          style={{
+                            marginTop: '10px',
+                            padding: '10px',
+                            backgroundColor: 'white',
+                            borderRadius: '6px',
+                            border: hasVoice ? '1px solid #28a745' : '1px solid #ddd',
+                          }}
+                        >
+                          <strong>🎤 {name}</strong> {hasVoice && <span style={{ color: '#28a745', fontSize: '12px' }}>✓ assigned</span>}
+                          <select
+                            value={assignment.source === 'library' ? assignment.libraryId || '' : ''}
+                            onChange={(e) => handleAssignSpeakerLibrary(name, e.target.value)}
+                            style={{ width: '100%', padding: '6px', marginTop: '6px' }}
+                          >
+                            <option value="">-- Select from library --</option>
+                            {voiceLibrary.map((voice) => (
+                              <option key={voice.$id} value={voice.$id}>
+                                {voice.name || voice.label || voice.$id}
+                              </option>
+                            ))}
+                          </select>
+                          <input
+                            type="text"
+                            placeholder="Or paste a custom voice URL..."
+                            value={assignment.source === 'custom' ? assignment.customUrl || '' : ''}
+                            onChange={(e) => handleAssignSpeakerCustomUrl(name, e.target.value)}
+                            style={{ width: '100%', padding: '6px', marginTop: '6px', boxSizing: 'border-box' }}
+                          />
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             )}
 
