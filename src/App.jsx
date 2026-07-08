@@ -126,6 +126,9 @@ const TtsServer = () => {
   // ❤️ Like -- sekadar toggle visual lokal untuk sekarang (belum disimpan
   // ke database manapun; kalau mau dipersist, perlu collection terpisah).
   const [isLiked, setIsLiked] = useState(false);
+  // Simpan requestId hasil generate terakhir -- dipakai buat update
+  // is_liked ke dokumen job yang bersangkutan pas tombol Like diklik.
+  const [currentJobId, setCurrentJobId] = useState(null);
 
   // Format ms jadi "mm:ss.cc" (menit:detik.centidetik), sama kayak
   // "00:40.30" di referensi UI
@@ -407,39 +410,51 @@ const TtsServer = () => {
     }
   };
 
-  const handleDownloadAudio = async () => {
+  const handleDownloadAudio = () => {
     if (!generatedAudio) return;
-    try {
-      // Fetch lalu download via blob -- lebih reliable daripada <a href download>
-      // langsung, karena beberapa server (termasuk Replicate) kadang tidak
-      // mengirim header Content-Disposition yang diperlukan supaya browser
-      // otomatis download (bukan cuma buka di tab baru).
-      const response = await fetch(generatedAudio);
-      const blob = await response.blob();
-      const blobUrl = URL.createObjectURL(blob);
-
-      const ext = outputFormat || 'wav';
-      const link = document.createElement('a');
-      link.href = blobUrl;
-      link.download = `narratorai-${Date.now()}.${ext}`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(blobUrl);
-    } catch (err) {
-      console.error('Failed to download audio:', err);
-      alert('Failed to download audio: ' + err.message);
-    }
+    // 🔧 Appwrite Storage /view endpoint nggak ngirim header
+    // Access-Control-Allow-Origin, jadi fetch() cross-origin ke situ
+    // ke-block CORS (sudah kejadian & terkonfirmasi). Solusinya: pakai
+    // endpoint /download yang otomatis ngirim Content-Disposition:
+    // attachment -- browser langsung download begitu link ini dibuka,
+    // TANPA perlu fetch()/JS baca isinya sama sekali, jadi CORS nggak
+    // relevan lagi (ini navigasi biasa, bukan panggilan JS).
+    const downloadUrl = generatedAudio.replace('/view?', '/download?');
+    window.open(downloadUrl, '_blank');
   };
 
   // 📤 Share file audio-nya LANGSUNG (bukan cuma link URL) -- pakai Web
   // Share API dengan parameter `files`. Ini yang bikin di HP muncul opsi
   // "share ke WhatsApp/dll" dengan file audio-nya beneran ke-attach,
   // persis kayak behavior share di app mobile.
+  // ❤️ Toggle like, disimpan ke field is_liked di dokumen job yang sama
+  // (collection web_generation_jobs, document ID = currentJobId).
+  const handleToggleLike = async () => {
+    if (!currentJobId) return;
+    const newLikedState = !isLiked;
+    setIsLiked(newLikedState); // update UI dulu (optimistic), biar responsif
+    try {
+      await databases.updateDocument(
+        DATABASE_ID,
+        JOBS_COLLECTION_ID,
+        currentJobId,
+        { is_liked: newLikedState }
+      );
+    } catch (err) {
+      console.error('Failed to update like status:', err);
+      setIsLiked(!newLikedState); // rollback UI kalau gagal simpan
+      alert('Failed to save like status: ' + err.message);
+    }
+  };
+
   const handleShareAudio = async () => {
     if (!generatedAudio) return;
     try {
-      const response = await fetch(generatedAudio);
+      // Pakai /download (bukan /view) buat fetch juga -- endpoint /view
+      // terkonfirmasi kena CORS block, /download lebih konsisten ngirim
+      // header yang dibutuhin buat operasi lintas-origin kayak gini.
+      const downloadUrl = generatedAudio.replace('/view?', '/download?');
+      const response = await fetch(downloadUrl);
       const blob = await response.blob();
       const ext = outputFormat || 'wav';
       const shareFile = new File([blob], generatedFileName || `narratorai-${Date.now()}.${ext}`, {
@@ -458,7 +473,7 @@ const TtsServer = () => {
         // bukan link, jadi kalau nggak bisa share file, lebih baik
         // download daripada nge-share link).
         alert('Your browser does not support direct file sharing. The file will be downloaded instead.');
-        await handleDownloadAudio();
+        handleDownloadAudio();
       }
     } catch (err) {
       // User membatalkan share (AbortError) itu normal, jangan tampilkan sebagai error
@@ -533,6 +548,7 @@ const TtsServer = () => {
     setGeneratedFileName(null);
     setFinalProcessTime(null);
     setIsLiked(false);
+    setCurrentJobId(null);
 
     // 🆕 requestId dibuat di client, dikirim ke Function, dan dipakai
     // sebagai document ID job hasil generate -- lihat penjelasan lengkap
@@ -616,6 +632,7 @@ const TtsServer = () => {
       if (data.success && data.audioUrl) {
         setGeneratedAudio(data.audioUrl);
         setGeneratedFileName(data.fileName || null);
+        setCurrentJobId(requestId);
 
         // Increment generation_count di user_stats -- dilakukan setelah
         // sukses, bukan sebelum, biar percobaan yang gagal nggak ikut
@@ -948,7 +965,7 @@ const TtsServer = () => {
 
               <div style={{ display: 'flex', gap: '10px', marginTop: '12px' }}>
                 <button
-                  onClick={() => setIsLiked((prev) => !prev)}
+                  onClick={handleToggleLike}
                   style={{
                     flex: 1,
                     padding: '10px',
