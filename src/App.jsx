@@ -136,6 +136,14 @@ const TtsServer = () => {
   // ❤️ Like -- sekadar toggle visual lokal untuk sekarang (belum disimpan
   // ke database manapun; kalau mau dipersist, perlu collection terpisah).
   const [isLiked, setIsLiked] = useState(false);
+
+  // 🔔 Toast notification custom -- di tengah layar, beda dari alert()
+  // bawaan browser yang posisinya nggak bisa diatur sama sekali.
+  const [toastMessage, setToastMessage] = useState(null);
+  const showToast = (message, durationMs = 3500) => {
+    setToastMessage(message);
+    setTimeout(() => setToastMessage(null), durationMs);
+  };
   // Simpan requestId hasil generate terakhir -- dipakai buat update
   // is_liked ke dokumen job yang bersangkutan pas tombol Like diklik.
   const [currentJobId, setCurrentJobId] = useState(null);
@@ -605,7 +613,7 @@ const TtsServer = () => {
         // bukan share link (sesuai permintaan: yang di-share filenya,
         // bukan link, jadi kalau nggak bisa share file, lebih baik
         // download daripada nge-share link).
-        alert('Your browser does not support direct file sharing. The file will be downloaded instead.');
+        showToast("Direct sharing isn't available on this browser -- here's your file to download instead.");
         handleDownloadAudio();
       }
     } catch (err) {
@@ -618,7 +626,7 @@ const TtsServer = () => {
       // denied"). Daripada nampilin error teknis mentah yang bikin bingung,
       // otomatis fallback ke download -- user tetap dapet filenya.
       console.error('Failed to share audio (falling back to download):', err);
-      alert('Sharing is not fully supported on this browser. Downloading the file instead.');
+      showToast("Direct sharing isn't available on this browser yet -- here's your file to download instead.");
       handleDownloadAudio();
     }
   };
@@ -823,6 +831,32 @@ const TtsServer = () => {
   // --- UI Render ---
   return (
     <div style={{ fontFamily: 'sans-serif', maxWidth: '1000px', margin: '0 auto', padding: '20px' }}>
+      {/* 🔔 Toast notification custom -- posisinya di tengah layar (fixed,
+          overlay di atas semua konten), beda dari alert() bawaan browser
+          yang selalu nempel di atas dan nggak bisa diatur. */}
+      {toastMessage && (
+        <div
+          style={{
+            position: 'fixed',
+            top: '50%',
+            left: '50%',
+            transform: 'translate(-50%, -50%)',
+            backgroundColor: 'rgba(20, 20, 20, 0.95)',
+            color: 'white',
+            padding: '20px 28px',
+            borderRadius: '10px',
+            maxWidth: '400px',
+            textAlign: 'center',
+            fontSize: '15px',
+            lineHeight: '1.5',
+            zIndex: 9999,
+            boxShadow: '0 8px 24px rgba(0,0,0,0.35)',
+          }}
+        >
+          {toastMessage}
+        </div>
+      )}
+
       <h1>🎙️ Simple TTS Server (React)</h1>
       
       <div style={{ display: 'flex', gap: '30px', marginTop: '20px' }}>
