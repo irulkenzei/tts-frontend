@@ -21,11 +21,15 @@ const FUNCTION_ID = '6a4bedd10009fe338821'; // Ganti dengan ID fungsi Replicate 
 const DATABASE_ID = 'naratorai'; // ganti kalau database ID Anda beda
 const SPEAKERS_COLLECTION_ID = 'speakers'; // collection yang sama dipakai app mobile
 const USER_STATS_COLLECTION_ID = 'user_stats'; // collection quota yang sama dipakai app mobile
+// 🧬 Collection TERPISAH dari `speakers` (yang dipakai app mobile) --
+// khusus nampung voice hasil clone dari web, per-user (filter by user_id).
+const WEB_SPEAKERS_COLLECTION_ID = 'web_speakers';
 // 🆕 Collection buat nampung hasil generate dari eksekusi ASYNC -- karena
 // Appwrite nggak pernah nyimpen responseBody eksekusi async, Function nulis
 // hasilnya ke sini, dan kita polling ke sini (bukan ke status eksekusi).
 const JOBS_COLLECTION_ID = 'web_generation_jobs';
 const MAX_FREE_GENERATIONS = 2; // sama persis limit di app mobile
+const MAX_FREE_CLONES = 2; // limit gratis clone voice, sama kayak generate
 // Bucket untuk upload hasil rekaman suara sebagai referensi speaker baru --
 // WAJIB punya permission "Read: Any" di Appwrite Console, karena Replicate
 // perlu bisa fetch URL file ini dari luar (public read, bukan cuma
@@ -114,6 +118,12 @@ const TtsServer = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [generatedAudio, setGeneratedAudio] = useState(null);
   const [generatedFileName, setGeneratedFileName] = useState(null);
+  // 🎯 Cache blob audio -- di-fetch SEKALI begitu generate selesai (bukan
+  // pas tombol Share diklik), supaya navigator.share() bisa dipanggil
+  // LANGSUNG tanpa delay network di dalam handler klik. Beberapa browser
+  // (terutama Chrome) nolak share() kalau ada jeda/async work terlalu
+  // lama sejak klik user, dianggap bukan aksi langsung lagi -> "Permission denied".
+  const [generatedAudioBlob, setGeneratedAudioBlob] = useState(null);
 
   // ⏱️ Timer live selama generate berlangsung -- elapsedMs di-update tiap
   // 100ms lewat setInterval selama isLoading true. finalProcessTime dibekukan
@@ -149,6 +159,14 @@ const TtsServer = () => {
   const [checkingQuota, setCheckingQuota] = useState(true);
   const isLimitReached = generationCount >= MAX_FREE_GENERATIONS;
 
+  // 🧬 State fitur Clone Voice
+  const [cloneCount, setCloneCount] = useState(0);
+  const [cloneVoiceName, setCloneVoiceName] = useState('');
+  const [isCloningVoice, setIsCloningVoice] = useState(false);
+  const [myClonedVoices, setMyClonedVoices] = useState([]);
+  const [selectedClonedVoiceId, setSelectedClonedVoiceId] = useState('');
+  const isCloneLimitReached = cloneCount >= MAX_FREE_CLONES;
+
   // --- Restore/buat Anonymous Session + sync quota dari `user_stats` ---
   // Session anonymous dipakai supaya ada "userId" yang konsisten antar
   // reload browser (session-nya nyangkut di cookie), tanpa perlu bikin
@@ -180,16 +198,18 @@ const TtsServer = () => {
           const doc = statsResponse.documents[0];
           setStatsDocId(doc.$id);
           setGenerationCount(doc.generation_count || 0);
+          setCloneCount(doc.clone_count || 0);
         } else {
           // Belum ada dokumen quota untuk user ini -- buat baru dengan count 0
           const newDoc = await databases.createDocument(
             DATABASE_ID,
             USER_STATS_COLLECTION_ID,
             ID.unique(),
-            { user_id: currentUserId, generation_count: 0, clone_count: 0 }
+            { user_id: currentUserId, generation_count: 0 }
           );
           setStatsDocId(newDoc.$id);
           setGenerationCount(0);
+          setCloneCount(0);
         }
       } catch (err) {
         console.error('Failed to init user/quota:', err);
@@ -202,6 +222,24 @@ const TtsServer = () => {
     };
     initUserAndQuota();
   }, []);
+
+  // --- Ambil daftar voice hasil clone milik user ini (collection terpisah) ---
+  useEffect(() => {
+    if (!userId) return;
+    const fetchMyClonedVoices = async () => {
+      try {
+        const response = await databases.listDocuments(
+          DATABASE_ID,
+          WEB_SPEAKERS_COLLECTION_ID,
+          [Query.equal('user_id', userId), Query.limit(100)]
+        );
+        setMyClonedVoices(response.documents);
+      } catch (err) {
+        console.error('Failed to fetch my cloned voices:', err);
+      }
+    };
+    fetchMyClonedVoices();
+  }, [userId]);
 
   // --- Ambil Voice Library dari Appwrite (collection yang sama dipakai app mobile) ---
   useEffect(() => {
@@ -367,6 +405,96 @@ const TtsServer = () => {
     }
   };
 
+  // 🧬 Simpan rekaman sebagai voice baru PERMANEN (beda dari
+  // useRecordingAsReference di atas, yang cuma dipakai sekali buat sesi
+  // generate ini doang). Butuh nama, disimpan ke collection `web_speakers`
+  // (terpisah dari `speakers` mobile), dan increment clone_count.
+  const handleCloneVoice = async () => {
+    if (isCloneLimitReached) {
+      alert('You have reached the free voice clone limit. Please upgrade to continue.');
+      return;
+    }
+    if (!recordedBlob) {
+      alert('Please record your voice first before cloning.');
+      return;
+    }
+    if (!cloneVoiceName.trim()) {
+      alert('Please enter a name for this voice.');
+      return;
+    }
+    if (!userId) {
+      alert('Could not verify your account. Please reload the page.');
+      return;
+    }
+
+    setIsCloningVoice(true);
+    try {
+      const file = new File([recordedBlob], `web-clone-${Date.now()}.webm`, { type: 'audio/webm' });
+
+      const uploadedFile = await storage.createFile(
+        RECORDING_UPLOAD_BUCKET_ID,
+        ID.unique(),
+        file
+      );
+
+      const fileUrl = `https://fra.cloud.appwrite.io/v1/storage/buckets/${RECORDING_UPLOAD_BUCKET_ID}/files/${uploadedFile.$id}/view?project=6a3a48a1003d333b0268`;
+
+      await databases.createDocument(
+        DATABASE_ID,
+        WEB_SPEAKERS_COLLECTION_ID,
+        ID.unique(),
+        {
+          user_id: userId,
+          name: cloneVoiceName.trim().substring(0, 255),
+          sample_url: fileUrl,
+        }
+      );
+
+      // Increment clone_count di user_stats
+      if (statsDocId) {
+        const newCloneCount = cloneCount + 1;
+        await databases.updateDocument(
+          DATABASE_ID,
+          USER_STATS_COLLECTION_ID,
+          statsDocId,
+          { clone_count: newCloneCount }
+        );
+        setCloneCount(newCloneCount);
+      }
+
+      // Refresh daftar cloned voices
+      const response = await databases.listDocuments(
+        DATABASE_ID,
+        WEB_SPEAKERS_COLLECTION_ID,
+        [Query.equal('user_id', userId), Query.limit(100)]
+      );
+      setMyClonedVoices(response.documents);
+
+      setCloneVoiceName('');
+      discardRecording();
+      alert(`Voice "${cloneVoiceName.trim()}" cloned and saved successfully!`);
+    } catch (err) {
+      console.error('Failed to clone voice:', err);
+      alert('Failed to clone voice: ' + err.message);
+    } finally {
+      setIsCloningVoice(false);
+    }
+  };
+
+  // Ketika user pilih voice dari dropdown "My Cloned Voices"
+  const handleSelectClonedVoice = (e) => {
+    const voiceId = e.target.value;
+    setSelectedClonedVoiceId(voiceId);
+    if (!voiceId) return;
+
+    const voice = myClonedVoices.find((v) => v.$id === voiceId);
+    if (voice) {
+      setCustomUrlText(voice.sample_url);
+      setVoiceSource('custom');
+      setSelectedLibraryVoiceId('');
+    }
+  };
+
   // --- Pilih file .wav dari komputer lokal ---
   // Path lokal (mis. /Users/nama/voice.wav) TIDAK bisa langsung dipakai
   // sebagai speaker_wav karena Replicate cuma bisa fetch URL publik lewat
@@ -450,12 +578,17 @@ const TtsServer = () => {
   const handleShareAudio = async () => {
     if (!generatedAudio) return;
     try {
-      // Pakai /download (bukan /view) buat fetch juga -- endpoint /view
-      // terkonfirmasi kena CORS block, /download lebih konsisten ngirim
-      // header yang dibutuhin buat operasi lintas-origin kayak gini.
-      const downloadUrl = generatedAudio.replace('/view?', '/download?');
-      const response = await fetch(downloadUrl);
-      const blob = await response.blob();
+      // Pakai blob yang udah di-cache dari pas generate selesai -- kalau
+      // karena suatu sebab belum ke-cache (blobErr pas pre-fetch), fetch
+      // ulang di sini sebagai fallback (walau resikonya balik ke masalah
+      // "Permission denied" kalau network-nya lambat).
+      let blob = generatedAudioBlob;
+      if (!blob) {
+        const downloadUrl = generatedAudio.replace('/view?', '/download?');
+        const response = await fetch(downloadUrl);
+        blob = await response.blob();
+      }
+
       const ext = outputFormat || 'wav';
       const shareFile = new File([blob], generatedFileName || `narratorai-${Date.now()}.${ext}`, {
         type: blob.type || 'audio/wav',
@@ -549,6 +682,7 @@ const TtsServer = () => {
     setFinalProcessTime(null);
     setIsLiked(false);
     setCurrentJobId(null);
+    setGeneratedAudioBlob(null);
 
     // 🆕 requestId dibuat di client, dikirim ke Function, dan dipakai
     // sebagai document ID job hasil generate -- lihat penjelasan lengkap
@@ -633,6 +767,19 @@ const TtsServer = () => {
         setGeneratedAudio(data.audioUrl);
         setGeneratedFileName(data.fileName || null);
         setCurrentJobId(requestId);
+
+        // Pre-fetch blob-nya sekarang juga (bukan nunggu tombol Share
+        // diklik) -- pakai /download supaya nggak kena CORS block yang
+        // sama kayak /view sebelumnya.
+        try {
+          const downloadUrl = data.audioUrl.replace('/view?', '/download?');
+          const blobResponse = await fetch(downloadUrl);
+          const blob = await blobResponse.blob();
+          setGeneratedAudioBlob(blob);
+        } catch (blobErr) {
+          console.error('Failed to pre-fetch audio blob for sharing:', blobErr);
+          setGeneratedAudioBlob(null);
+        }
 
         // Increment generation_count di user_stats -- dilakukan setelah
         // sukses, bukan sebelum, biar percobaan yang gagal nggak ikut
@@ -776,9 +923,67 @@ const TtsServer = () => {
                    </button>
                    <button onClick={discardRecording}>🗑️ Discard</button>
                  </div>
+
+                 {/* 🧬 Clone Voice -- simpan permanen sebagai voice baru,
+                     beda dari "Use Reference" yang cuma sekali pakai */}
+                 <div style={{ marginTop: '12px', padding: '10px', backgroundColor: '#fff3e0', borderRadius: '6px', border: '1px solid #ffcc80' }}>
+                   <label style={{ fontWeight: 'bold', fontSize: '13px' }}>🧬 Or Save as New Voice (Clone):</label>
+                   <input
+                     type="text"
+                     value={cloneVoiceName}
+                     onChange={(e) => setCloneVoiceName(e.target.value)}
+                     placeholder="Voice name (e.g. My Voice)"
+                     disabled={isCloneLimitReached}
+                     style={{ width: '100%', padding: '6px', marginTop: '6px', boxSizing: 'border-box' }}
+                   />
+                   <button
+                     onClick={handleCloneVoice}
+                     disabled={isCloningVoice || isCloneLimitReached}
+                     style={{
+                       width: '100%',
+                       marginTop: '6px',
+                       padding: '8px',
+                       backgroundColor: isCloneLimitReached ? '#9D4EDD' : '#fb8c00',
+                       color: 'white',
+                       border: 'none',
+                       borderRadius: '4px',
+                       cursor: isCloningVoice || isCloneLimitReached ? 'not-allowed' : 'pointer',
+                       fontWeight: 'bold',
+                     }}
+                   >
+                     {isCloningVoice
+                       ? '⏳ Cloning...'
+                       : isCloneLimitReached
+                       ? '⭐ Upgrade to Pro'
+                       : '🧬 Clone & Save Voice'}
+                   </button>
+                   {!isCloneLimitReached && (
+                     <small style={{ display: 'block', marginTop: '4px', color: '#666' }}>
+                       {cloneCount} / {MAX_FREE_CLONES} free clones used
+                     </small>
+                   )}
+                 </div>
                </div>
              )}
           </div>
+
+          {myClonedVoices.length > 0 && (
+            <div style={{ marginBottom: '15px' }}>
+              <label>🧬 My Cloned Voices:</label><br/>
+              <select
+                value={selectedClonedVoiceId}
+                onChange={handleSelectClonedVoice}
+                style={{ width: '100%', padding: '8px' }}
+              >
+                <option value="">-- Select one of your cloned voices --</option>
+                {myClonedVoices.map((voice) => (
+                  <option key={voice.$id} value={voice.$id}>
+                    {voice.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
 
           <hr style={{ margin: '20px 0' }} />
 
