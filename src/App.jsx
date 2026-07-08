@@ -1071,24 +1071,12 @@ const TtsServer = () => {
               <div>
                 <label>Text to Synthesize:</label>
                 <textarea 
-        ref={textareaRef}
-        value={text} 
-        onChange={(e) => setText(e.target.value)}
-        maxLength={MAX_CHARS} // <-- Atribut bawaan HTML untuk limit ketik & paste
-        rows="8" 
-        style={{ 
-          width: '100%', 
-          padding: '16px', 
-          boxSizing: 'border-box', 
-          marginTop: '5px',
-          borderRadius: '12px',
-          border: '1px solid #d1d5db',
-          fontSize: '15px',
-          outline: 'none',
-          resize: 'vertical'
-        }}
-        placeholder="Type or Paste your text here, wait until magic come...."
-      />
+                  value={text} 
+                  onChange={(e) => setText(e.target.value)}
+                  rows="8" 
+                  style={{ width: '100%', padding: '10px', boxSizing: 'border-box', marginTop: '5px' }}
+                  placeholder="Type or Paste your text here, wait until magic come...."
+                />
               </div>
             ) : (
               <div>
