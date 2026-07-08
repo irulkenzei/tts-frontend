@@ -610,10 +610,16 @@ const TtsServer = () => {
       }
     } catch (err) {
       // User membatalkan share (AbortError) itu normal, jangan tampilkan sebagai error
-      if (err.name !== 'AbortError') {
-        console.error('Failed to share audio:', err);
-        alert('Failed to share audio: ' + err.message);
-      }
+      if (err.name === 'AbortError') return;
+
+      // Dukungan share file di Web Share API TIDAK konsisten antar
+      // browser/OS (mis. Chrome di macOS "partial support" -- canShare()
+      // bisa balikin true tapi share() tetap gagal dengan "Permission
+      // denied"). Daripada nampilin error teknis mentah yang bikin bingung,
+      // otomatis fallback ke download -- user tetap dapet filenya.
+      console.error('Failed to share audio (falling back to download):', err);
+      alert('Sharing is not fully supported on this browser. Downloading the file instead.');
+      handleDownloadAudio();
     }
   };
 
