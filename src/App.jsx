@@ -129,7 +129,7 @@ const TtsServer = () => {
   // lokal (.wav) yang sudah ada.
   const [backgroundMusicUrl, setBackgroundMusicUrl] = useState(null);
   const [backgroundMusicName, setBackgroundMusicName] = useState(null);
-  const [musicVolumeDb, setMusicVolumeDb] = useState(-10);
+  const [musicVolumeDb, setMusicVolumeDb] = useState(-6);
   const [isUploadingMusic, setIsUploadingMusic] = useState(false);
 
   const formatDuration = (ms) => {
