@@ -42,6 +42,7 @@ const RECORDING_UPLOAD_BUCKET_ID = '6a40a942000c72f7a8f1';
 // speaker baru cukup dengan menulis nama baru di skrip -- otomatis scale
 // ke berapa pun yang terdeteksi, tidak dibatasi ke 2/3 speaker.
 function parseSpeakersFromScript(script) {
+  if (!script || typeof script !== 'string') return [];
   const names = [];
   const seen = new Set();
   const tagPattern = /^\[([^\]]+)\]:/;
@@ -64,41 +65,29 @@ function parseSpeakersFromScript(script) {
 const TtsServer = () => {
   // --- State Management ---
   const [mode, setMode] = useState('single');
-  // ⚠️ XTTS v2 TIDAK mendukung Bahasa Indonesia ('id') sebagai kode bahasa --
-  // dropdown di bawah cuma berisi bahasa yang benar-benar didukung model.
-  // Default 'en' karena itu yang paling universal/aman.
   const [language, setLanguage] = useState('en');
   const [speed, setSpeed] = useState(1.0);
   const [temperature, setTemperature] = useState(0.7);
   const [outputFormat, setOutputFormat] = useState('wav');
 
-  // 🎙️ Referensi speaker bisa dari 3 sumber: pilih dari library, ketik URL
-  // manual, atau hasil upload rekaman. `voiceSource` nentuin mana yang
-  // dipakai untuk generate -- library & custom TIDAK saling auto-isi,
-  // biar custom URL murni manual sesuai request.
   const [customUrlText, setCustomUrlText] = useState('');
-  const [voiceSource, setVoiceSource] = useState(''); // 'library' | 'custom' | ''
+  const [voiceSource, setVoiceSource] = useState(''); 
 
-  // 🎵 Voice Library -- daftar speaker dari collection Appwrite yang sama
-  // dipakai app mobile.
   const [voiceLibrary, setVoiceLibrary] = useState([]);
   const [selectedLibraryVoiceId, setSelectedLibraryVoiceId] = useState('');
   const [loadingLibrary, setLoadingLibrary] = useState(true);
 
-  // 📤 Status upload rekaman ke Appwrite Storage
   const [isUploadingRecording, setIsUploadingRecording] = useState(false);
-  // 📤 Status upload file .wav lokal yang dipilih user (fitur terpisah dari rekaman)
   const [isUploadingFile, setIsUploadingFile] = useState(false);
   
-  // Text Input
+  // Text Input & Refs untuk UI Baru
   const [text, setText] = useState('');
   const [dialogueScript, setDialogueScript] = useState('');
+  const textRef = useRef(null);
+  const dialogueRef = useRef(null);
+  const MAX_CHARS = 3000;
 
-  // 🎭 Assignment voice per speaker di mode dialog -- key: nama speaker,
-  // value: { source: 'library'|'custom', libraryId, customUrl }
   const [speakerAssignments, setSpeakerAssignments] = useState({});
-
-  // Deteksi live nama-nama speaker dari skrip, dihitung ulang tiap skrip berubah
   const detectedSpeakerNames = useMemo(
     () => parseSpeakersFromScript(dialogueScript),
     [dialogueScript]
@@ -118,38 +107,31 @@ const TtsServer = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [generatedAudio, setGeneratedAudio] = useState(null);
   const [generatedFileName, setGeneratedFileName] = useState(null);
-  // 🎯 Cache blob audio -- di-fetch SEKALI begitu generate selesai (bukan
-  // pas tombol Share diklik), supaya navigator.share() bisa dipanggil
-  // LANGSUNG tanpa delay network di dalam handler klik. Beberapa browser
-  // (terutama Chrome) nolak share() kalau ada jeda/async work terlalu
-  // lama sejak klik user, dianggap bukan aksi langsung lagi -> "Permission denied".
   const [generatedAudioBlob, setGeneratedAudioBlob] = useState(null);
 
-  // ⏱️ Timer live selama generate berlangsung -- elapsedMs di-update tiap
-  // 100ms lewat setInterval selama isLoading true. finalProcessTime dibekukan
-  // begitu generate selesai (sukses atau gagal), buat ditampilin di hasil.
   const [elapsedMs, setElapsedMs] = useState(0);
   const [finalProcessTime, setFinalProcessTime] = useState(null);
   const timerIntervalRef = useRef(null);
   const timerStartRef = useRef(null);
 
-  // ❤️ Like -- sekadar toggle visual lokal untuk sekarang (belum disimpan
-  // ke database manapun; kalau mau dipersist, perlu collection terpisah).
   const [isLiked, setIsLiked] = useState(false);
-
-  // 🔔 Toast notification custom -- di tengah layar, beda dari alert()
-  // bawaan browser yang posisinya nggak bisa diatur sama sekali.
   const [toastMessage, setToastMessage] = useState(null);
   const showToast = (message, durationMs = 3500) => {
     setToastMessage(message);
     setTimeout(() => setToastMessage(null), durationMs);
   };
-  // Simpan requestId hasil generate terakhir -- dipakai buat update
-  // is_liked ke dokumen job yang bersangkutan pas tombol Like diklik.
   const [currentJobId, setCurrentJobId] = useState(null);
 
-  // Format ms jadi "mm:ss.cc" (menit:detik.centidetik), sama kayak
-  // "00:40.30" di referensi UI
+  // 🎵 Background music + auto-ducking -- opsional, kalau diisi otomatis
+  // diikutsertakan sebagai parameter tambahan ke Replicate (background_music,
+  // music_volume_db). Lihat predict.py untuk logic ducking-nya (ffmpeg
+  // sidechaincompress). Pola upload-nya sama seperti fitur upload file
+  // lokal (.wav) yang sudah ada.
+  const [backgroundMusicUrl, setBackgroundMusicUrl] = useState(null);
+  const [backgroundMusicName, setBackgroundMusicName] = useState(null);
+  const [musicVolumeDb, setMusicVolumeDb] = useState(-10);
+  const [isUploadingMusic, setIsUploadingMusic] = useState(false);
+
   const formatDuration = (ms) => {
     const totalCentiseconds = Math.floor(ms / 10);
     const minutes = Math.floor(totalCentiseconds / 6000);
@@ -158,16 +140,14 @@ const TtsServer = () => {
     return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}.${String(centiseconds).padStart(2, '0')}`;
   };
 
-  // 🔒 Sistem quota -- reuse collection `user_stats` yang sama dipakai app
-  // mobile. Web ini pakai Appwrite Anonymous Session supaya tetap ada
-  // "userId" yang konsisten antar reload, tanpa perlu login manual.
+  // User & Quota State
   const [userId, setUserId] = useState(null);
   const [generationCount, setGenerationCount] = useState(0);
   const [statsDocId, setStatsDocId] = useState(null);
   const [checkingQuota, setCheckingQuota] = useState(true);
   const isLimitReached = generationCount >= MAX_FREE_GENERATIONS;
 
-  // 🧬 State fitur Clone Voice
+  // Clone Voice State
   const [cloneCount, setCloneCount] = useState(0);
   const [cloneVoiceName, setCloneVoiceName] = useState('');
   const [isCloningVoice, setIsCloningVoice] = useState(false);
@@ -175,11 +155,7 @@ const TtsServer = () => {
   const [selectedClonedVoiceId, setSelectedClonedVoiceId] = useState('');
   const isCloneLimitReached = cloneCount >= MAX_FREE_CLONES;
 
-  // --- Restore/buat Anonymous Session + sync quota dari `user_stats` ---
-  // Session anonymous dipakai supaya ada "userId" yang konsisten antar
-  // reload browser (session-nya nyangkut di cookie), tanpa perlu bikin
-  // sistem login. Reuse persis collection `user_stats` yang sudah dipakai
-  // app mobile untuk quota generate.
+  // --- Effects (Diambil utuh dari kode asli Anda) ---
   useEffect(() => {
     const initUserAndQuota = async () => {
       try {
@@ -188,14 +164,12 @@ const TtsServer = () => {
           const currentAccount = await account.get();
           currentUserId = currentAccount.$id;
         } catch (notLoggedInErr) {
-          // Belum ada session -- buat anonymous session baru
           await account.createAnonymousSession();
           const newAccount = await account.get();
           currentUserId = newAccount.$id;
         }
         setUserId(currentUserId);
 
-        // Cari dokumen user_stats untuk user ini
         const statsResponse = await databases.listDocuments(
           DATABASE_ID,
           USER_STATS_COLLECTION_ID,
@@ -208,7 +182,6 @@ const TtsServer = () => {
           setGenerationCount(doc.generation_count || 0);
           setCloneCount(doc.clone_count || 0);
         } else {
-          // Belum ada dokumen quota untuk user ini -- buat baru dengan count 0
           const newDoc = await databases.createDocument(
             DATABASE_ID,
             USER_STATS_COLLECTION_ID,
@@ -221,9 +194,6 @@ const TtsServer = () => {
         }
       } catch (err) {
         console.error('Failed to init user/quota:', err);
-        // Kalau gagal (mis. collection belum ada), biarkan generationCount
-        // tetap 0 -- user tetap bisa coba generate, cuma quota-nya nggak
-        // ke-track dengan benar sampai masalahnya diperbaiki.
       } finally {
         setCheckingQuota(false);
       }
@@ -231,7 +201,6 @@ const TtsServer = () => {
     initUserAndQuota();
   }, []);
 
-  // --- Ambil daftar voice hasil clone milik user ini (collection terpisah) ---
   useEffect(() => {
     if (!userId) return;
     const fetchMyClonedVoices = async () => {
@@ -249,13 +218,9 @@ const TtsServer = () => {
     fetchMyClonedVoices();
   }, [userId]);
 
-  // --- Ambil Voice Library dari Appwrite (collection yang sama dipakai app mobile) ---
   useEffect(() => {
     const fetchVoiceLibrary = async () => {
       try {
-        // Query.limit default Appwrite cuma 25 dokumen -- kalau nggak
-        // di-set eksplisit, cuma 25 speaker pertama yang kemuat walau
-        // total speaker Anda 199. Naikin ke 500 biar semua kemuat aman.
         const response = await databases.listDocuments(
           DATABASE_ID,
           SPEAKERS_COLLECTION_ID,
@@ -264,8 +229,6 @@ const TtsServer = () => {
         setVoiceLibrary(response.documents);
       } catch (err) {
         console.error('Failed to retrieve voice library:', err);
-        // Tidak alert ke user -- kalau library gagal load, "Custom Speaker
-        // Audio URL" tetap bisa dipakai manual sebagai fallback.
       } finally {
         setLoadingLibrary(false);
       }
@@ -273,31 +236,25 @@ const TtsServer = () => {
     fetchVoiceLibrary();
   }, []);
 
-  // Ketika user pilih voice dari dropdown library, nggak isi/sentuh
-  // customUrlText sama sekali -- itu tetep murni manual. Cukup catat
-  // sumbernya via voiceSource, URL asli-nya diambil ulang saat generate.
+  // --- Handlers ---
   const handleSelectLibraryVoice = (e) => {
     const voiceId = e.target.value;
     setSelectedLibraryVoiceId(voiceId);
     setVoiceSource(voiceId ? 'library' : '');
   };
 
-  // Ambil URL audio dari voice library yang lagi dipilih (kalau ada)
   const getLibraryVoiceUrl = () => {
     const voice = voiceLibrary.find((v) => v.$id === selectedLibraryVoiceId);
     if (!voice) return '';
     return voice.sample_url || voice.audio_url || voice.voice_url || voice.value || '';
   };
 
-  // 🎭 Ambil URL library dari sebuah ID (helper generik, dipakai untuk voice
-  // utama maupun assignment per-speaker di mode dialog)
   const getLibraryUrlById = (libraryId) => {
     const voice = voiceLibrary.find((v) => v.$id === libraryId);
     if (!voice) return '';
     return voice.sample_url || voice.audio_url || voice.voice_url || voice.value || '';
   };
 
-  // Assign voice untuk 1 speaker di mode dialog -- dari dropdown library
   const handleAssignSpeakerLibrary = (name, libraryId) => {
     setSpeakerAssignments((prev) => ({
       ...prev,
@@ -305,7 +262,6 @@ const TtsServer = () => {
     }));
   };
 
-  // Assign voice untuk 1 speaker di mode dialog -- dari ketik URL manual
   const handleAssignSpeakerCustomUrl = (name, url) => {
     setSpeakerAssignments((prev) => ({
       ...prev,
@@ -313,7 +269,6 @@ const TtsServer = () => {
     }));
   };
 
-  // URL final yang dipakai untuk 1 speaker, sesuai source yang lagi aktif
   const getSpeakerVoiceUrl = (name) => {
     const assignment = speakerAssignments[name];
     if (!assignment) return '';
@@ -323,7 +278,7 @@ const TtsServer = () => {
     return assignment.customUrl || '';
   };
 
-  // --- Logic Perekam Suara (Voice Cloning Reference) ---
+  // --- Logic Perekam Suara ---
   const toggleRecording = async () => {
     if (isRecording) {
       mediaRecorderRef.current.stop();
@@ -344,7 +299,7 @@ const TtsServer = () => {
           const blob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
           setRecordedBlob(blob);
           setRecordedUrl(URL.createObjectURL(blob));
-          stream.getTracks().forEach(track => track.stop()); // Matikan mic
+          stream.getTracks().forEach(track => track.stop()); 
           clearInterval(recordingTimerRef.current);
         };
 
@@ -352,9 +307,6 @@ const TtsServer = () => {
         setIsRecording(true);
         setRecordingSeconds(0);
 
-        // ⏱️ Timer 1 detik + auto-stop di batas MAX_RECORDING_SECONDS (30s)
-        // -- pakai functional update (prev => prev + 1) supaya closure-nya
-        // selalu baca nilai terbaru, bukan nilai stale dari saat interval dibuat.
         recordingTimerRef.current = setInterval(() => {
           setRecordingSeconds((prev) => {
             const next = prev + 1;
@@ -380,30 +332,19 @@ const TtsServer = () => {
 
   const useRecordingAsReference = async () => {
     if (!recordedBlob) return;
-
     setIsUploadingRecording(true);
     try {
-      // Browser MediaRecorder biasanya keluarin format webm, bukan wav --
-      // dikasih nama .webm di sini apa adanya (jujur soal formatnya).
-      // Kalau model Replicate Anda strict cuma nerima .wav, perlu convert
-      // dulu di sisi Function (pakai ffmpeg) sebelum dipakai sebagai
-      // speaker_wav -- untuk sekarang langsung dipakai apa adanya.
       const file = new File([recordedBlob], `web-recording-${Date.now()}.webm`, { type: 'audio/webm' });
-
       const uploadedFile = await storage.createFile(
         RECORDING_UPLOAD_BUCKET_ID,
         ID.unique(),
         file
       );
-
-      // Bangun URL publik file ini -- format standar Appwrite Storage view URL.
       const fileUrl = `https://fra.cloud.appwrite.io/v1/storage/buckets/${RECORDING_UPLOAD_BUCKET_ID}/files/${uploadedFile.$id}/view?project=6a3a48a1003d333b0268`;
-
-      // Rekaman diperlakukan sebagai "custom URL" (bukan bagian dari
-      // library) -- isi customUrlText & set source-nya ke 'custom'.
+      
       setCustomUrlText(fileUrl);
       setVoiceSource('custom');
-      setSelectedLibraryVoiceId(''); // reset visual dropdown library
+      setSelectedLibraryVoiceId(''); 
       alert('The recording was successfully uploaded and immediately used as a voice reference.!');
     } catch (err) {
       console.error('Failed to upload recording:', err);
@@ -413,10 +354,6 @@ const TtsServer = () => {
     }
   };
 
-  // 🧬 Simpan rekaman sebagai voice baru PERMANEN (beda dari
-  // useRecordingAsReference di atas, yang cuma dipakai sekali buat sesi
-  // generate ini doang). Butuh nama, disimpan ke collection `web_speakers`
-  // (terpisah dari `speakers` mobile), dan increment clone_count.
   const handleCloneVoice = async () => {
     if (isCloneLimitReached) {
       alert('You have reached the free voice clone limit. Please upgrade to continue.');
@@ -438,7 +375,6 @@ const TtsServer = () => {
     setIsCloningVoice(true);
     try {
       const file = new File([recordedBlob], `web-clone-${Date.now()}.webm`, { type: 'audio/webm' });
-
       const uploadedFile = await storage.createFile(
         RECORDING_UPLOAD_BUCKET_ID,
         ID.unique(),
@@ -458,7 +394,6 @@ const TtsServer = () => {
         }
       );
 
-      // Increment clone_count di user_stats
       if (statsDocId) {
         const newCloneCount = cloneCount + 1;
         await databases.updateDocument(
@@ -470,7 +405,6 @@ const TtsServer = () => {
         setCloneCount(newCloneCount);
       }
 
-      // Refresh daftar cloned voices
       const response = await databases.listDocuments(
         DATABASE_ID,
         WEB_SPEAKERS_COLLECTION_ID,
@@ -489,7 +423,6 @@ const TtsServer = () => {
     }
   };
 
-  // Ketika user pilih voice dari dropdown "My Cloned Voices"
   const handleSelectClonedVoice = (e) => {
     const voiceId = e.target.value;
     setSelectedClonedVoiceId(voiceId);
@@ -503,34 +436,24 @@ const TtsServer = () => {
     }
   };
 
-  // --- Pilih file .wav dari komputer lokal ---
-  // Path lokal (mis. /Users/nama/voice.wav) TIDAK bisa langsung dipakai
-  // sebagai speaker_wav karena Replicate cuma bisa fetch URL publik lewat
-  // internet, bukan baca file dari komputer Anda. Jadi begitu user pilih
-  // file, langsung di-upload ke Appwrite Storage (bucket yang sama dengan
-  // rekaman), dan URL hasil upload itu yang dipakai -- bukan path lokalnya.
   const handleLocalFileSelect = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
     if (!file.name.toLowerCase().endsWith('.wav')) {
       alert('Please select a .wav file.');
-      e.target.value = ''; // reset input biar bisa pilih ulang
+      e.target.value = ''; 
       return;
     }
 
     setIsUploadingFile(true);
     try {
-      // Rename dengan prefix "web-" sebelum upload, biar gampang dibedain
-      // dari file yang di-upload lewat app mobile (bucket-nya sama-sama dipakai).
       const renamedFile = new File([file], `web-${file.name}`, { type: file.type });
-
       const uploadedFile = await storage.createFile(
         RECORDING_UPLOAD_BUCKET_ID,
         ID.unique(),
         renamedFile
       );
-
       const fileUrl = `https://fra.cloud.appwrite.io/v1/storage/buckets/${RECORDING_UPLOAD_BUCKET_ID}/files/${uploadedFile.$id}/view?project=6a3a48a1003d333b0268`;
 
       setCustomUrlText(fileUrl);
@@ -542,33 +465,102 @@ const TtsServer = () => {
       alert('Failed to upload file: ' + err.message);
     } finally {
       setIsUploadingFile(false);
-      e.target.value = ''; // reset input, biar bisa pilih file yang sama lagi kalau perlu
+      e.target.value = ''; 
     }
+  };
+
+  const MAX_MUSIC_DURATION_SECONDS = 30;
+
+  // Baca durasi file audio SEBELUM upload, pakai elemen <audio> browser --
+  // nggak perlu upload dulu baru ketauan kepanjangan, langsung ketolak di sisi client.
+  const getAudioFileDuration = (file) => {
+    return new Promise((resolve, reject) => {
+      const audioEl = document.createElement('audio');
+      audioEl.preload = 'metadata';
+      audioEl.onloadedmetadata = () => {
+        URL.revokeObjectURL(audioEl.src);
+        resolve(audioEl.duration);
+      };
+      audioEl.onerror = () => {
+        URL.revokeObjectURL(audioEl.src);
+        reject(new Error('Could not read audio file duration'));
+      };
+      audioEl.src = URL.createObjectURL(file);
+    });
+  };
+
+  // 🎵 Pilih & upload file musik latar dari komputer -- pola upload sama
+  // persis dengan handleLocalFileSelect (file .wav) di atas, cuma bucket
+  // & prefix nama file dibedain biar gampang dikenali di Storage.
+  const handlePickBackgroundMusic = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsUploadingMusic(true);
+    try {
+      // ⏱️ Cek durasi dulu SEBELUM upload -- max 30 detik, sesuai request.
+      // ffmpeg sebenarnya bisa loop musik berapa pun panjangnya (lihat
+      // predict.py), tapi limit ini sengaja dipasang biar user nggak upload
+      // file musik full-length yang nggak perlu (buang bandwidth & storage).
+      let duration;
+      try {
+        duration = await getAudioFileDuration(file);
+      } catch (durationErr) {
+        console.error('Failed to read audio duration:', durationErr);
+        alert('Could not read this audio file. Please try a different file.');
+        setIsUploadingMusic(false);
+        e.target.value = '';
+        return;
+      }
+
+      if (duration > MAX_MUSIC_DURATION_SECONDS) {
+        alert(
+          `Background music must be ${MAX_MUSIC_DURATION_SECONDS} seconds or shorter ` +
+          `(yours is ${Math.round(duration)}s). Please trim it first -- it will be looped automatically anyway.`
+        );
+        setIsUploadingMusic(false);
+        e.target.value = '';
+        return;
+      }
+
+      const renamedFile = new File([file], `web-bgmusic-${Date.now()}-${file.name}`, {
+        type: file.type,
+      });
+
+      const uploadedFile = await storage.createFile(
+        RECORDING_UPLOAD_BUCKET_ID,
+        ID.unique(),
+        renamedFile
+      );
+
+      const fileUrl = `https://fra.cloud.appwrite.io/v1/storage/buckets/${RECORDING_UPLOAD_BUCKET_ID}/files/${uploadedFile.$id}/view?project=6a3a48a1003d333b0268`;
+
+      setBackgroundMusicUrl(fileUrl);
+      setBackgroundMusicName(file.name);
+    } catch (err) {
+      console.error('Failed to upload background music:', err);
+      alert('Failed to upload background music: ' + err.message);
+    } finally {
+      setIsUploadingMusic(false);
+      e.target.value = '';
+    }
+  };
+
+  const handleRemoveBackgroundMusic = () => {
+    setBackgroundMusicUrl(null);
+    setBackgroundMusicName(null);
   };
 
   const handleDownloadAudio = () => {
     if (!generatedAudio) return;
-    // 🔧 Appwrite Storage /view endpoint nggak ngirim header
-    // Access-Control-Allow-Origin, jadi fetch() cross-origin ke situ
-    // ke-block CORS (sudah kejadian & terkonfirmasi). Solusinya: pakai
-    // endpoint /download yang otomatis ngirim Content-Disposition:
-    // attachment -- browser langsung download begitu link ini dibuka,
-    // TANPA perlu fetch()/JS baca isinya sama sekali, jadi CORS nggak
-    // relevan lagi (ini navigasi biasa, bukan panggilan JS).
     const downloadUrl = generatedAudio.replace('/view?', '/download?');
     window.open(downloadUrl, '_blank');
   };
 
-  // 📤 Share file audio-nya LANGSUNG (bukan cuma link URL) -- pakai Web
-  // Share API dengan parameter `files`. Ini yang bikin di HP muncul opsi
-  // "share ke WhatsApp/dll" dengan file audio-nya beneran ke-attach,
-  // persis kayak behavior share di app mobile.
-  // ❤️ Toggle like, disimpan ke field is_liked di dokumen job yang sama
-  // (collection web_generation_jobs, document ID = currentJobId).
   const handleToggleLike = async () => {
     if (!currentJobId) return;
     const newLikedState = !isLiked;
-    setIsLiked(newLikedState); // update UI dulu (optimistic), biar responsif
+    setIsLiked(newLikedState); 
     try {
       await databases.updateDocument(
         DATABASE_ID,
@@ -578,7 +570,7 @@ const TtsServer = () => {
       );
     } catch (err) {
       console.error('Failed to update like status:', err);
-      setIsLiked(!newLikedState); // rollback UI kalau gagal simpan
+      setIsLiked(!newLikedState); 
       alert('Failed to save like status: ' + err.message);
     }
   };
@@ -586,10 +578,6 @@ const TtsServer = () => {
   const handleShareAudio = async () => {
     if (!generatedAudio) return;
     try {
-      // Pakai blob yang udah di-cache dari pas generate selesai -- kalau
-      // karena suatu sebab belum ke-cache (blobErr pas pre-fetch), fetch
-      // ulang di sini sebagai fallback (walau resikonya balik ke masalah
-      // "Permission denied" kalau network-nya lambat).
       let blob = generatedAudioBlob;
       if (!blob) {
         const downloadUrl = generatedAudio.replace('/view?', '/download?');
@@ -608,30 +596,17 @@ const TtsServer = () => {
           title: 'NarratorAI Voice Over',
         });
       } else {
-        // Fallback untuk browser yang nggak support share file (mis.
-        // sebagian besar browser desktop) -- turun ke download biasa,
-        // bukan share link (sesuai permintaan: yang di-share filenya,
-        // bukan link, jadi kalau nggak bisa share file, lebih baik
-        // download daripada nge-share link).
         showToast("Direct sharing isn't available on this browser -- here's your file to download instead.");
         handleDownloadAudio();
       }
     } catch (err) {
-      // User membatalkan share (AbortError) itu normal, jangan tampilkan sebagai error
       if (err.name === 'AbortError') return;
-
-      // Dukungan share file di Web Share API TIDAK konsisten antar
-      // browser/OS (mis. Chrome di macOS "partial support" -- canShare()
-      // bisa balikin true tapi share() tetap gagal dengan "Permission
-      // denied"). Daripada nampilin error teknis mentah yang bikin bingung,
-      // otomatis fallback ke download -- user tetap dapet filenya.
-      console.error('Failed to share audio (falling back to download):', err);
+      console.error('Failed to share audio:', err);
       showToast("Direct sharing isn't available on this browser yet -- here's your file to download instead.");
       handleDownloadAudio();
     }
   };
 
-  // --- Logic Eksekusi ke Appwrite Function ---
   const handleGenerateSpeech = async (e) => {
     e.preventDefault();
     if (isLimitReached) {
@@ -640,9 +615,6 @@ const TtsServer = () => {
     if (mode === 'single' && !text) return alert("Text cannot be empty!");
     if (mode === 'dialogue' && !dialogueScript) return alert("Dialogue script cannot be empty!");
 
-    // Siapkan payload spesifik per mode SEBELUM setIsLoading(true), supaya
-    // validasi yang gagal (speaker belum lengkap, dll) tidak sempat
-    // nge-lock tombol generate.
     let payload;
 
     if (mode === 'dialogue') {
@@ -667,13 +639,13 @@ const TtsServer = () => {
         speed: parseFloat(speed),
         temperature: parseFloat(temperature),
         output_format: outputFormat,
+        // 🎵 Opsional -- kalau backgroundMusicUrl null, field ini nggak
+        // ngaruh apa-apa (Function/predict.py cuma proses ducking kalau ada)
+        background_music: backgroundMusicUrl || undefined,
+        music_volume_db: musicVolumeDb,
       };
     } else {
-      // Tentukan URL speaker final berdasarkan sumber yang lagi aktif --
-      // library dan custom URL sengaja TIDAK saling override otomatis,
-      // voiceSource yang nentuin mana yang beneran dipakai untuk generate.
-      const finalSpeakerWavUrl =
-        voiceSource === 'library' ? getLibraryVoiceUrl() : customUrlText;
+      const finalSpeakerWavUrl = voiceSource === 'library' ? getLibraryVoiceUrl() : customUrlText;
 
       if (!finalSpeakerWavUrl) {
         return alert('Please select a voice from the library, enter a custom URL, or record your voice first.');
@@ -687,6 +659,8 @@ const TtsServer = () => {
         speed: parseFloat(speed),
         temperature: parseFloat(temperature),
         output_format: outputFormat,
+        background_music: backgroundMusicUrl || undefined,
+        music_volume_db: musicVolumeDb,
       };
     }
 
@@ -698,13 +672,9 @@ const TtsServer = () => {
     setCurrentJobId(null);
     setGeneratedAudioBlob(null);
 
-    // 🆕 requestId dibuat di client, dikirim ke Function, dan dipakai
-    // sebagai document ID job hasil generate -- lihat penjelasan lengkap
-    // kenapa ini perlu di komentar sekitar polling di bawah.
     const requestId = ID.unique();
     payload.requestId = requestId;
 
-    // ⏱️ Mulai timer live -- update tiap 100ms selama proses generate berlangsung
     setElapsedMs(0);
     timerStartRef.current = Date.now();
     timerIntervalRef.current = setInterval(() => {
@@ -712,21 +682,6 @@ const TtsServer = () => {
     }, 100);
 
     try {
-
-      // ⏱️ PENTING: eksekusi SYNCHRONOUS (async: false, default) di Appwrite
-      // punya hard-cap 30 detik dari sisi API gateway-nya sendiri. Generate
-      // audio hampir pasti lebih dari 30 detik, jadi WAJIB pakai async: true.
-      //
-      // 🛑 TAPI: Appwrite TIDAK PERNAH menyimpan responseBody untuk eksekusi
-      // async, di manapun, titik -- ini bukan bug, ini didokumentasikan
-      // resmi ("Response bodies and headers are not stored anywhere, so
-      // they are only ever returned via synchronous executions"). Jadi kita
-      // TIDAK bisa polling getExecution() buat ambil hasilnya.
-      //
-      // Solusinya: Function nulis hasil generate ke collection Database
-      // `web_generation_jobs` (document ID = requestId ini), dan DI SINI
-      // kita polling ke DOKUMEN ITU lewat databases.getDocument(), bukan
-      // ke status eksekusi.
       const createExecRes = await fetch(
         `${APPWRITE_ENDPOINT}/functions/${FUNCTION_ID}/executions`,
         {
@@ -749,12 +704,8 @@ const TtsServer = () => {
         throw new Error(errBody.message || `Failed to start execution (status ${createExecRes.status})`);
       }
 
-      // 📊 Polling ke Database, BUKAN ke Execution -- cek dokumen job ini
-      // tiap 3 detik sampai statusnya "completed" atau "failed". 404 di
-      // awal itu WAJAR (dokumennya belum dibuat Function, masih proses),
-      // jadi di-treat sebagai "belum selesai", bukan error.
       let jobDoc = null;
-      const maxWaitMs = 5 * 60 * 1000; // 5 menit, samain kira-kira sama Timeout Function
+      const maxWaitMs = 5 * 60 * 1000; 
       const pollStart = Date.now();
 
       while (!jobDoc || jobDoc.status === 'pending') {
@@ -764,9 +715,7 @@ const TtsServer = () => {
         await new Promise((resolve) => setTimeout(resolve, 3000));
         try {
           jobDoc = await databases.getDocument(DATABASE_ID, JOBS_COLLECTION_ID, requestId);
-          console.log('Job status:', jobDoc.status);
         } catch (notFoundErr) {
-          // Dokumen belum dibuat Function -- masih proses, lanjut polling
           jobDoc = null;
         }
       }
@@ -782,9 +731,6 @@ const TtsServer = () => {
         setGeneratedFileName(data.fileName || null);
         setCurrentJobId(requestId);
 
-        // Pre-fetch blob-nya sekarang juga (bukan nunggu tombol Share
-        // diklik) -- pakai /download supaya nggak kena CORS block yang
-        // sama kayak /view sebelumnya.
         try {
           const downloadUrl = data.audioUrl.replace('/view?', '/download?');
           const blobResponse = await fetch(downloadUrl);
@@ -795,9 +741,6 @@ const TtsServer = () => {
           setGeneratedAudioBlob(null);
         }
 
-        // Increment generation_count di user_stats -- dilakukan setelah
-        // sukses, bukan sebelum, biar percobaan yang gagal nggak ikut
-        // makan quota gratis user.
         if (statsDocId) {
           try {
             const newCount = generationCount + 1;
@@ -819,7 +762,6 @@ const TtsServer = () => {
       console.error(err);
       alert("Error: " + err.message);
     } finally {
-      // ⏱️ Hentikan timer live dan bekukan waktu final proses
       clearInterval(timerIntervalRef.current);
       if (timerStartRef.current) {
         setFinalProcessTime(Date.now() - timerStartRef.current);
@@ -828,31 +770,85 @@ const TtsServer = () => {
     }
   };
 
+  // --- Fungsi Clear & Pause UI Baru ---
+  const handleClearText = (e) => {
+    e.preventDefault(); 
+    if (mode === 'single') {
+      setText('');
+      setTimeout(() => textRef.current?.focus(), 0);
+    } else {
+      setDialogueScript('');
+      setTimeout(() => dialogueRef.current?.focus(), 0);
+    }
+  };
+
+  const handleInsertPause = (e) => {
+    const pauseValue = e.target.value;
+    if (!pauseValue) return;
+
+    const pauseTag = ` [pause ${pauseValue}s] `;
+    const isSingle = mode === 'single';
+    const currentText = isSingle ? text : dialogueScript;
+    const currentRef = isSingle ? textRef.current : dialogueRef.current;
+    const setTargetText = isSingle ? setText : setDialogueScript;
+
+    if (currentText.length + pauseTag.length > MAX_CHARS) {
+      alert("Kapasitas teks tidak cukup untuk menambahkan pause!");
+      e.target.value = "";
+      return;
+    }
+
+    if (currentRef) {
+      const startPos = currentRef.selectionStart;
+      const endPos = currentRef.selectionEnd;
+
+      const newText = currentText.substring(0, startPos) + pauseTag + currentText.substring(endPos, currentText.length);
+      setTargetText(newText);
+      e.target.value = ""; 
+
+      setTimeout(() => {
+        currentRef.focus();
+        const newCursorPos = startPos + pauseTag.length;
+        currentRef.setSelectionRange(newCursorPos, newCursorPos);
+      }, 0);
+    }
+  };
+
+  const renderTextareaHeader = (currentTextLength) => (
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px', marginTop: '10px' }}>
+      <span style={{ fontSize: '13px', background: '#f3f4f6', padding: '6px 14px', borderRadius: '20px', border: '1px solid #e5e7eb' }}>
+        {currentTextLength} / {MAX_CHARS}
+      </span>
+      <div style={{ display: 'flex', gap: '10px' }}>
+        <select 
+          onChange={handleInsertPause} 
+          defaultValue=""
+          style={{ padding: '6px 14px', borderRadius: '20px', border: '1px solid #d1d5db', cursor: 'pointer', background: 'white' }}
+        >
+          <option value="" disabled>|| Pauses</option>
+          <option value="0.5">0.5s</option>
+          <option value="1">1s</option>
+          <option value="2">2s</option>
+          <option value="3">3s</option>
+          <option value="4">4s</option>
+          <option value="5">5s</option>
+        </select>
+        <button 
+          type="button" 
+          onClick={handleClearText}
+          style={{ padding: '6px 14px', borderRadius: '20px', border: '1px solid #d1d5db', background: 'white', cursor: 'pointer' }}
+        >
+          Clear Text
+        </button>
+      </div>
+    </div>
+  );
+
   // --- UI Render ---
   return (
     <div style={{ fontFamily: 'sans-serif', maxWidth: '1000px', margin: '0 auto', padding: '20px' }}>
-      {/* 🔔 Toast notification custom -- posisinya di tengah layar (fixed,
-          overlay di atas semua konten), beda dari alert() bawaan browser
-          yang selalu nempel di atas dan nggak bisa diatur. */}
       {toastMessage && (
-        <div
-          style={{
-            position: 'fixed',
-            top: '50%',
-            left: '50%',
-            transform: 'translate(-50%, -50%)',
-            backgroundColor: 'rgba(20, 20, 20, 0.95)',
-            color: 'white',
-            padding: '20px 28px',
-            borderRadius: '10px',
-            maxWidth: '400px',
-            textAlign: 'center',
-            fontSize: '15px',
-            lineHeight: '1.5',
-            zIndex: 9999,
-            boxShadow: '0 8px 24px rgba(0,0,0,0.35)',
-          }}
-        >
+        <div style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', backgroundColor: 'rgba(20, 20, 20, 0.95)', color: 'white', padding: '20px 28px', borderRadius: '10px', maxWidth: '400px', textAlign: 'center', fontSize: '15px', lineHeight: '1.5', zIndex: 9999, boxShadow: '0 8px 24px rgba(0,0,0,0.35)' }}>
           {toastMessage}
         </div>
       )}
@@ -861,30 +857,30 @@ const TtsServer = () => {
       
       <div style={{ display: 'flex', gap: '30px', marginTop: '20px' }}>
         
-        {/* SIDEBAR - Pengaturan */}
+        {/* SIDEBAR */}
         <div style={{ flex: '1', backgroundColor: '#f5f5f5', padding: '20px', borderRadius: '8px' }}>
           <h2>🗣️ Selection:</h2>
           
           <div style={{ marginBottom: '15px' }}>
             <label>Language:</label><br/>
             <select value={language} onChange={(e) => setLanguage(e.target.value)} style={{ width: '100%', padding: '8px' }}>
-                    <option value="en">English</option>
-                    <option value="es">Spanish</option>
-                    <option value="fr">French</option>
-                    <option value="de">German</option>
-                    <option value="it">Italian</option>
-                    <option value="pt">Portuguese</option>
-                    <option value="pl">Polish</option>
-                    <option value="tr">Turkish</option>
-                    <option value="ru">Russian</option>
-                    <option value="nl">Dutch</option>
-                    <option value="cs">Czech</option>
-                    <option value="ar">Arabic</option>
-                    <option value="zh-cn">Chinese</option>
-                    <option value="ja">Japanese</option>
-                    <option value="hu">Hungarian</option>
-                    <option value="ko">Korean</option>
-                    <option value="hi">Hindi</option> 
+                <option value="en">English</option>
+                <option value="es">Spanish</option>
+                <option value="fr">French</option>
+                <option value="de">German</option>
+                <option value="it">Italian</option>
+                <option value="pt">Portuguese</option>
+                <option value="pl">Polish</option>
+                <option value="tr">Turkish</option>
+                <option value="ru">Russian</option>
+                <option value="nl">Dutch</option>
+                <option value="cs">Czech</option>
+                <option value="ar">Arabic</option>
+                <option value="zh-cn">Chinese</option>
+                <option value="ja">Japanese</option>
+                <option value="hu">Hungarian</option>
+                <option value="ko">Korean</option>
+                <option value="hi">Hindi</option> 
             </select>
           </div>
 
@@ -952,7 +948,7 @@ const TtsServer = () => {
                </span>
              )}
              <br/>
-             <small>Maximum {MAX_RECORDING_SECONDS} seconds per recording -- will stop automatically.</small>
+             <small>Maximum {MAX_RECORDING_SECONDS} seconds per recording.</small>
              
              {recordedUrl && (
                <div style={{ marginTop: '10px' }}>
@@ -964,8 +960,6 @@ const TtsServer = () => {
                    <button onClick={discardRecording}>🗑️ Discard</button>
                  </div>
 
-                 {/* 🧬 Clone Voice -- simpan permanen sebagai voice baru,
-                     beda dari "Use Reference" yang cuma sekali pakai */}
                  <div style={{ marginTop: '12px', padding: '10px', backgroundColor: '#fff3e0', borderRadius: '6px', border: '1px solid #ffcc80' }}>
                    <label style={{ fontWeight: 'bold', fontSize: '13px' }}>🧬 Or Save as New Voice (Clone):</label>
                    <input
@@ -979,23 +973,9 @@ const TtsServer = () => {
                    <button
                      onClick={handleCloneVoice}
                      disabled={isCloningVoice || isCloneLimitReached}
-                     style={{
-                       width: '100%',
-                       marginTop: '6px',
-                       padding: '8px',
-                       backgroundColor: isCloneLimitReached ? '#9D4EDD' : '#fb8c00',
-                       color: 'white',
-                       border: 'none',
-                       borderRadius: '4px',
-                       cursor: isCloningVoice || isCloneLimitReached ? 'not-allowed' : 'pointer',
-                       fontWeight: 'bold',
-                     }}
+                     style={{ width: '100%', marginTop: '6px', padding: '8px', backgroundColor: isCloneLimitReached ? '#9D4EDD' : '#fb8c00', color: 'white', border: 'none', borderRadius: '4px', cursor: isCloningVoice || isCloneLimitReached ? 'not-allowed' : 'pointer', fontWeight: 'bold' }}
                    >
-                     {isCloningVoice
-                       ? '⏳ Cloning...'
-                       : isCloneLimitReached
-                       ? '⭐ Upgrade to Pro'
-                       : '🧬 Clone & Save Voice'}
+                     {isCloningVoice ? '⏳ Cloning...' : isCloneLimitReached ? '⭐ Upgrade to Pro' : '🧬 Clone & Save Voice'}
                    </button>
                    {!isCloneLimitReached && (
                      <small style={{ display: 'block', marginTop: '4px', color: '#666' }}>
@@ -1036,7 +1016,54 @@ const TtsServer = () => {
              <label>🎭 Expressiveness (Temp): {temperature}</label>
              <input type="range" min="0.1" max="1.0" step="0.05" value={temperature} onChange={(e) => setTemperature(e.target.value)} style={{ width: '100%' }}/>
           </div>
-          
+
+          {/* 🎵 Background Music + Auto-Ducking */}
+          <div style={{ marginBottom: '15px', padding: '10px', backgroundColor: '#fff3e0', borderRadius: '6px', border: '1px solid #ffcc80' }}>
+            <label style={{ fontWeight: 'bold' }}>🎵 Background Music (optional, max 30s):</label>
+            {backgroundMusicName ? (
+              <div style={{ marginTop: '8px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <span style={{ fontSize: '13px' }} title={backgroundMusicName}>
+                  🎶 {backgroundMusicName.length > 28 ? backgroundMusicName.substring(0, 28) + '...' : backgroundMusicName}
+                </span>
+                <button
+                  onClick={handleRemoveBackgroundMusic}
+                  style={{ padding: '4px 8px', backgroundColor: '#e0e0e0', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '12px' }}
+                >
+                  ✕ Remove
+                </button>
+              </div>
+            ) : (
+              <input
+                type="file"
+                accept="audio/*"
+                onChange={handlePickBackgroundMusic}
+                disabled={isUploadingMusic}
+                style={{ width: '100%', padding: '6px', marginTop: '6px', backgroundColor: 'white', border: '1px solid #ccc', borderRadius: '4px' }}
+              />
+            )}
+            {isUploadingMusic && <small>⏳ Uploading music...</small>}
+
+            {backgroundMusicUrl && (
+              <>
+                <small style={{ display: 'block', marginTop: '8px', color: '#666' }}>
+                  Music automatically ducks (turns down) whenever the narration is speaking, and comes back up during silence.
+                </small>
+                <label style={{ display: 'block', marginTop: '6px', fontSize: '13px' }}>
+                  Music Volume: {musicVolumeDb} dB
+                </label>
+                <input
+                  type="range"
+                  min="-30"
+                  max="0"
+                  step="1"
+                  value={musicVolumeDb}
+                  onChange={(e) => setMusicVolumeDb(parseInt(e.target.value, 10))}
+                  style={{ width: '100%' }}
+                />
+              </>
+            )}
+          </div>
+
           <div>
             <label>💾 Format:</label>
             <select value={outputFormat} onChange={(e) => setOutputFormat(e.target.value)} style={{ width: '100%', padding: '8px' }}>
@@ -1049,7 +1076,7 @@ const TtsServer = () => {
           </div>
         </div>
 
-        {/* MAIN CONTENT - Input Teks & Hasil */}
+        {/* MAIN CONTENT */}
         <div style={{ flex: '2' }}>
           <div style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}>
              <button 
@@ -1069,29 +1096,32 @@ const TtsServer = () => {
           <form onSubmit={handleGenerateSpeech}>
             {mode === 'single' ? (
               <div>
-                <label>Text to Synthesize:</label>
+                <label style={{ fontWeight: 'bold' }}>Text to Synthesize:</label>
+                {renderTextareaHeader(text.length)}
                 <textarea 
+                  ref={textRef}
                   value={text} 
                   onChange={(e) => setText(e.target.value)}
+                  maxLength={MAX_CHARS}
                   rows="8" 
-                  style={{ width: '100%', padding: '10px', boxSizing: 'border-box', marginTop: '5px' }}
+                  style={{ width: '100%', padding: '15px', boxSizing: 'border-box', marginTop: '5px', borderRadius: '8px', border: '1px solid #d1d5db', outline: 'none', fontSize: '15px', resize: 'vertical' }}
                   placeholder="Type or Paste your text here, wait until magic come...."
                 />
               </div>
             ) : (
               <div>
-                <label>Dialogue Script:</label>
+                <label style={{ fontWeight: 'bold' }}>Dialogue Script:</label>
+                {renderTextareaHeader(dialogueScript.length)}
                 <textarea 
+                  ref={dialogueRef}
                   value={dialogueScript} 
                   onChange={(e) => setDialogueScript(e.target.value)}
+                  maxLength={MAX_CHARS}
                   rows="8" 
-                  style={{ width: '100%', padding: '10px', boxSizing: 'border-box', marginTop: '5px' }}
-                  placeholder="[Adam]: I just finished testing that new mobile app Narator AI for my latest video project, and I am honestly blown away.&#10;[Anna]: Oh really? I have been skeptical about AI voices for a long time. Are they finally sounding natural?"
+                  style={{ width: '100%', padding: '15px', boxSizing: 'border-box', marginTop: '5px', borderRadius: '8px', border: '1px solid #d1d5db', outline: 'none', fontSize: '15px', resize: 'vertical' }}
+                  placeholder="[Adam]: I just finished testing...&#10;[Anna]: Oh really?"
                 />
 
-                {/* 🎭 Kartu assignment voice, muncul otomatis begitu ada
-                    nama speaker terdeteksi dari skrip -- reuse voiceLibrary
-                    yang sama dengan mode single-voice. */}
                 {detectedSpeakerNames.length > 0 && (
                   <div style={{ marginTop: '15px', padding: '15px', backgroundColor: '#f0f8ff', border: '1px solid #cce4ff', borderRadius: '8px' }}>
                     <label style={{ fontWeight: 'bold' }}>🎭 Assign Voice per Speaker:</label>
@@ -1099,16 +1129,7 @@ const TtsServer = () => {
                       const assignment = speakerAssignments[name] || {};
                       const hasVoice = !!getSpeakerVoiceUrl(name);
                       return (
-                        <div
-                          key={name}
-                          style={{
-                            marginTop: '10px',
-                            padding: '10px',
-                            backgroundColor: 'white',
-                            borderRadius: '6px',
-                            border: hasVoice ? '1px solid #28a745' : '1px solid #ddd',
-                          }}
-                        >
+                        <div key={name} style={{ marginTop: '10px', padding: '10px', backgroundColor: 'white', borderRadius: '6px', border: hasVoice ? '1px solid #28a745' : '1px solid #ddd' }}>
                           <strong>🎤 {name}</strong> {hasVoice && <span style={{ color: '#28a745', fontSize: '12px' }}>✓ assigned</span>}
                           <select
                             value={assignment.source === 'library' ? assignment.libraryId || '' : ''}
@@ -1117,9 +1138,7 @@ const TtsServer = () => {
                           >
                             <option value="">-- Select from library --</option>
                             {voiceLibrary.map((voice) => (
-                              <option key={voice.$id} value={voice.$id}>
-                                {voice.name || voice.label || voice.$id}
-                              </option>
+                              <option key={voice.$id} value={voice.$id}>{voice.name || voice.label || voice.$id}</option>
                             ))}
                           </select>
                           <input
@@ -1137,8 +1156,6 @@ const TtsServer = () => {
               </div>
             )}
 
-            {/* Animasi spinner buat tombol Generate -- inline <style> karena
-                project ini nggak pakai CSS file terpisah/CSS-in-JS library. */}
             <style>{`
               @keyframes narratorai-spin {
                 from { transform: rotate(0deg); }
@@ -1166,25 +1183,9 @@ const TtsServer = () => {
               }}
             >
               {(isLoading || checkingQuota) && (
-                <span
-                  style={{
-                    display: 'inline-block',
-                    width: '16px',
-                    height: '16px',
-                    border: '2px solid rgba(255,255,255,0.4)',
-                    borderTopColor: '#fff',
-                    borderRadius: '50%',
-                    animation: 'narratorai-spin 0.8s linear infinite',
-                  }}
-                />
+                <span style={{ display: 'inline-block', width: '16px', height: '16px', border: '2px solid rgba(255,255,255,0.4)', borderTopColor: '#fff', borderRadius: '50%', animation: 'narratorai-spin 0.8s linear infinite' }} />
               )}
-              {checkingQuota
-                ? 'Checking quota...'
-                : isLoading
-                ? `Generating... ${formatDuration(elapsedMs)}`
-                : isLimitReached
-                ? '⭐ Upgrade to Pro'
-                : '🎵 Generate Speech'}
+              {checkingQuota ? 'Checking quota...' : isLoading ? `Generating... ${formatDuration(elapsedMs)}` : isLimitReached ? '⭐ Upgrade to Pro' : '🎵 Generate Speech'}
             </button>
             {!checkingQuota && !isLimitReached && (
               <small style={{ display: 'block', marginTop: '6px', color: '#666' }}>
@@ -1198,65 +1199,17 @@ const TtsServer = () => {
             <div style={{ marginTop: '30px', padding: '20px', backgroundColor: '#e9f7ef', border: '1px solid #c3e6cb', borderRadius: '8px' }}>
               <div style={{ backgroundColor: '#28a745', color: 'white', padding: '12px', borderRadius: '6px', textAlign: 'center', fontWeight: 'bold' }}>
                 ✅ Generated successfully! (Processed Time: {finalProcessTime !== null ? formatDuration(finalProcessTime) : '--:--.--'})
-                {generatedFileName && (
-                  <>
-                    <br />
-                    File: {generatedFileName}
-                  </>
-                )}
+                {generatedFileName && <><br />File: {generatedFileName}</>}
               </div>
-
               <audio src={generatedAudio} controls autoPlay style={{ width: '100%', marginTop: '15px' }} />
-
               <div style={{ display: 'flex', gap: '10px', marginTop: '12px' }}>
-                <button
-                  onClick={handleToggleLike}
-                  style={{
-                    flex: 1,
-                    padding: '10px',
-                    backgroundColor: isLiked ? '#ff4d6d' : '#e0e0e0',
-                    color: isLiked ? 'white' : 'black',
-                    border: 'none',
-                    borderRadius: '4px',
-                    cursor: 'pointer',
-                    fontSize: '14px',
-                    fontWeight: 'bold',
-                  }}
-                >
+                <button onClick={handleToggleLike} style={{ flex: 1, padding: '10px', backgroundColor: isLiked ? '#ff4d6d' : '#e0e0e0', color: isLiked ? 'white' : 'black', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '14px', fontWeight: 'bold' }}>
                   {isLiked ? '❤️ Liked' : '🤍 Like'}
                 </button>
-
-                <button
-                  onClick={handleShareAudio}
-                  style={{
-                    flex: 1,
-                    padding: '10px',
-                    backgroundColor: '#007bff',
-                    color: 'white',
-                    border: 'none',
-                    borderRadius: '4px',
-                    cursor: 'pointer',
-                    fontSize: '14px',
-                    fontWeight: 'bold',
-                  }}
-                >
+                <button onClick={handleShareAudio} style={{ flex: 1, padding: '10px', backgroundColor: '#007bff', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '14px', fontWeight: 'bold' }}>
                   📤 Share
                 </button>
-
-                <button
-                  onClick={handleDownloadAudio}
-                  style={{
-                    flex: 1,
-                    padding: '10px',
-                    backgroundColor: '#28a745',
-                    color: 'white',
-                    border: 'none',
-                    borderRadius: '4px',
-                    cursor: 'pointer',
-                    fontSize: '14px',
-                    fontWeight: 'bold',
-                  }}
-                >
+                <button onClick={handleDownloadAudio} style={{ flex: 1, padding: '10px', backgroundColor: '#28a745', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '14px', fontWeight: 'bold' }}>
                   ⬇️ Download
                 </button>
               </div>
