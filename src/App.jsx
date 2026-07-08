@@ -21,6 +21,10 @@ const FUNCTION_ID = '6a4bedd10009fe338821'; // Ganti dengan ID fungsi Replicate 
 const DATABASE_ID = 'naratorai'; // ganti kalau database ID Anda beda
 const SPEAKERS_COLLECTION_ID = 'speakers'; // collection yang sama dipakai app mobile
 const USER_STATS_COLLECTION_ID = 'user_stats'; // collection quota yang sama dipakai app mobile
+// 🆕 Collection buat nampung hasil generate dari eksekusi ASYNC -- karena
+// Appwrite nggak pernah nyimpen responseBody eksekusi async, Function nulis
+// hasilnya ke sini, dan kita polling ke sini (bukan ke status eksekusi).
+const JOBS_COLLECTION_ID = 'web_generation_jobs';
 const MAX_FREE_GENERATIONS = 2; // sama persis limit di app mobile
 // Bucket untuk upload hasil rekaman suara sebagai referensi speaker baru --
 // WAJIB punya permission "Read: Any" di Appwrite Console, karena Replicate
@@ -530,6 +534,12 @@ const TtsServer = () => {
     setFinalProcessTime(null);
     setIsLiked(false);
 
+    // 🆕 requestId dibuat di client, dikirim ke Function, dan dipakai
+    // sebagai document ID job hasil generate -- lihat penjelasan lengkap
+    // kenapa ini perlu di komentar sekitar polling di bawah.
+    const requestId = ID.unique();
+    payload.requestId = requestId;
+
     // ⏱️ Mulai timer live -- update tiap 100ms selama proses generate berlangsung
     setElapsedMs(0);
     timerStartRef.current = Date.now();
@@ -540,21 +550,24 @@ const TtsServer = () => {
     try {
 
       // ⏱️ PENTING: eksekusi SYNCHRONOUS (async: false, default) di Appwrite
-      // punya hard-cap 30 detik dari sisi API gateway-nya sendiri -- ini
-      // TIDAK bisa diubah lewat setting "Timeout" di halaman Function.
-      // Generate audio (apalagi dengan cold start container Replicate)
-      // hampir pasti lebih dari 30 detik, jadi WAJIB pakai async: true.
+      // punya hard-cap 30 detik dari sisi API gateway-nya sendiri. Generate
+      // audio hampir pasti lebih dari 30 detik, jadi WAJIB pakai async: true.
       //
-      // CATATAN: dipanggil lewat fetch() langsung ke REST API Appwrite,
-      // BUKAN lewat class Functions dari SDK -- ini sengaja, supaya nggak
-      // tergantung sama versi SDK yang parameter createExecution/
-      // getExecution-nya beda-beda (positional vs object) antar versi.
-      // REST API-nya sendiri stabil, jadi paling aman dipanggil manual.
+      // 🛑 TAPI: Appwrite TIDAK PERNAH menyimpan responseBody untuk eksekusi
+      // async, di manapun, titik -- ini bukan bug, ini didokumentasikan
+      // resmi ("Response bodies and headers are not stored anywhere, so
+      // they are only ever returned via synchronous executions"). Jadi kita
+      // TIDAK bisa polling getExecution() buat ambil hasilnya.
+      //
+      // Solusinya: Function nulis hasil generate ke collection Database
+      // `web_generation_jobs` (document ID = requestId ini), dan DI SINI
+      // kita polling ke DOKUMEN ITU lewat databases.getDocument(), bukan
+      // ke status eksekusi.
       const createExecRes = await fetch(
         `${APPWRITE_ENDPOINT}/functions/${FUNCTION_ID}/executions`,
         {
           method: 'POST',
-          credentials: 'include', // kirim cookie session anonymous
+          credentials: 'include',
           headers: {
             'X-Appwrite-Project': APPWRITE_PROJECT_ID,
             'Content-Type': 'application/json',
@@ -572,65 +585,33 @@ const TtsServer = () => {
         throw new Error(errBody.message || `Failed to start execution (status ${createExecRes.status})`);
       }
 
-      const execution = await createExecRes.json();
+      // 📊 Polling ke Database, BUKAN ke Execution -- cek dokumen job ini
+      // tiap 3 detik sampai statusnya "completed" atau "failed". 404 di
+      // awal itu WAJAR (dokumennya belum dibuat Function, masih proses),
+      // jadi di-treat sebagai "belum selesai", bukan error.
+      let jobDoc = null;
+      const maxWaitMs = 5 * 60 * 1000; // 5 menit, samain kira-kira sama Timeout Function
+      const pollStart = Date.now();
 
-      let currentExecution = execution;
-      while (
-        currentExecution.status !== 'completed' &&
-        currentExecution.status !== 'failed'
-      ) {
-        console.log('Execution status:', currentExecution.status);
+      while (!jobDoc || jobDoc.status === 'pending') {
+        if (Date.now() - pollStart > maxWaitMs) {
+          throw new Error('Generation timed out. Please check Appwrite Console logs.');
+        }
         await new Promise((resolve) => setTimeout(resolve, 3000));
-
-        const getExecRes = await fetch(
-          `${APPWRITE_ENDPOINT}/functions/${FUNCTION_ID}/executions/${execution.$id}`,
-          {
-            method: 'GET',
-            credentials: 'include',
-            headers: { 'X-Appwrite-Project': APPWRITE_PROJECT_ID },
-          }
-        );
-
-        if (!getExecRes.ok) {
-          const errBody = await getExecRes.json().catch(() => ({}));
-          throw new Error(errBody.message || `Failed to poll execution (status ${getExecRes.status})`);
+        try {
+          jobDoc = await databases.getDocument(DATABASE_ID, JOBS_COLLECTION_ID, requestId);
+          console.log('Job status:', jobDoc.status);
+        } catch (notFoundErr) {
+          // Dokumen belum dibuat Function -- masih proses, lanjut polling
+          jobDoc = null;
         }
-
-        currentExecution = await getExecRes.json();
       }
 
-      if (currentExecution.status === 'failed') {
-        throw new Error('Function execution failed. Check Appwrite Console logs for details.');
+      if (jobDoc.status === 'failed') {
+        throw new Error(jobDoc.error_message || 'Function execution failed. Check Appwrite Console logs for details.');
       }
 
-      // 🛡️ Kadang status sudah "completed" tapi responseBody-nya masih
-      // kosong sesaat (race condition/eventual consistency di sisi
-      // Appwrite -- status ke-update duluan sebelum body-nya kesimpen).
-      // Retry re-fetch beberapa kali sebelum nyerah, daripada langsung
-      // JSON.parse('') yang bakal ngelempar "Unexpected end of JSON input".
-      let retries = 0;
-      while (!currentExecution.responseBody?.trim() && retries < 5) {
-        console.log('responseBody still empty, retrying fetch...', retries);
-        await new Promise((resolve) => setTimeout(resolve, 1000));
-        const retryRes = await fetch(
-          `${APPWRITE_ENDPOINT}/functions/${FUNCTION_ID}/executions/${execution.$id}`,
-          {
-            method: 'GET',
-            credentials: 'include',
-            headers: { 'X-Appwrite-Project': APPWRITE_PROJECT_ID },
-          }
-        );
-        if (retryRes.ok) {
-          currentExecution = await retryRes.json();
-        }
-        retries++;
-      }
-
-      if (!currentExecution.responseBody?.trim()) {
-        throw new Error('Execution completed but returned an empty response. Check Appwrite Console logs for details.');
-      }
-
-      const data = JSON.parse(currentExecution.responseBody);
+      const data = { success: true, audioUrl: jobDoc.audio_url, fileName: jobDoc.file_name };
 
       if (data.success && data.audioUrl) {
         setGeneratedAudio(data.audioUrl);
