@@ -478,6 +478,18 @@ const TtsServer = () => {
 
   const MAX_MUSIC_DURATION_SECONDS = 30;
 
+  const MUSIC_LIBRARY_COLLECTION_ID = 'background_music_library';
+
+  // Hash SHA-256 dari isi file, pakai Web Crypto API bawaan browser --
+  // nggak perlu library tambahan. Dipakai buat deteksi "file yang sama
+  // persis" tanpa perlu bandingin byte-by-byte manual.
+  const getFileHash = async (file) => {
+    const buffer = await file.arrayBuffer();
+    const hashBuffer = await crypto.subtle.digest('SHA-256', buffer);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    return hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
+  };
+
   // Baca durasi file audio SEBELUM upload, pakai elemen <audio> browser --
   // nggak perlu upload dulu baru ketauan kepanjangan, langsung ketolak di sisi client.
   const getAudioFileDuration = (file) => {
@@ -530,6 +542,33 @@ const TtsServer = () => {
         return;
       }
 
+      // 🔍 Cek dulu apakah file ini (isinya, bukan cuma nama) sudah pernah
+      // di-upload sebelumnya (oleh user yang sama) -- kalau iya, REUSE URL
+      // yang sudah ada, jangan upload dobel.
+      const fileHash = await getFileHash(file);
+      if (userId) {
+        try {
+          const existing = await databases.listDocuments(
+            DATABASE_ID,
+            MUSIC_LIBRARY_COLLECTION_ID,
+            [Query.equal('user_id', userId), Query.equal('file_hash', fileHash), Query.limit(1)]
+          );
+          if (existing.documents.length > 0) {
+            const doc = existing.documents[0];
+            setBackgroundMusicUrl(doc.sample_url);
+            setBackgroundMusicName(doc.file_name);
+            setIsUploadingMusic(false);
+            e.target.value = '';
+            showToast('This music was already uploaded before -- reusing the existing file instead of uploading again.');
+            return;
+          }
+        } catch (dedupErr) {
+          // Kalau pengecekan dedup gagal (mis. collection belum ada), jangan
+          // blokir upload -- lanjut aja seperti biasa, cuma nggak ke-dedup.
+          console.error('Failed to check for duplicate music:', dedupErr);
+        }
+      }
+
       const renamedFile = new File([file], `web-bgmusic-${Date.now()}-${file.name}`, {
         type: file.type,
       });
@@ -541,6 +580,21 @@ const TtsServer = () => {
       );
 
       const fileUrl = `https://fra.cloud.appwrite.io/v1/storage/buckets/${RECORDING_UPLOAD_BUCKET_ID}/files/${uploadedFile.$id}/view?project=6a3a48a1003d333b0268`;
+
+      // 📝 Catat hash file ini, supaya lain kali upload file yang sama
+      // persis, kita bisa reuse URL ini tanpa upload ulang.
+      if (userId) {
+        try {
+          await databases.createDocument(
+            DATABASE_ID,
+            MUSIC_LIBRARY_COLLECTION_ID,
+            ID.unique(),
+            { user_id: userId, file_hash: fileHash, file_name: file.name, sample_url: fileUrl }
+          );
+        } catch (saveHashErr) {
+          console.error('Failed to save music hash record:', saveHashErr);
+        }
+      }
 
       setBackgroundMusicUrl(fileUrl);
       setBackgroundMusicName(file.name);
@@ -914,7 +968,7 @@ const TtsServer = () => {
 
             <div style={{ marginBottom: '8px' }}>
               <label>⏸️ Period Pause: {periodPauseMs}ms</label>
-              <input type="range" min="0" max="3000" step="50" value={periodPauseMs} onChange={(e) => setPeriodPauseMs(parseInt(e.target.value, 10))} style={{ width: '100%' }}/>
+              <input type="range" min="0" max="5000" step="50" value={periodPauseMs} onChange={(e) => setPeriodPauseMs(parseInt(e.target.value, 10))} style={{ width: '100%' }}/>
               <small style={{ color: '#666' }}>Pause duration after a period</small>
             </div>
 
@@ -1134,6 +1188,11 @@ const TtsServer = () => {
               />
             )}
             {isUploadingMusic && <small>⏳ Uploading music...</small>}
+
+            {/* 🔊 Player buat preview musik latar yang dipilih/di-upload */}
+            {backgroundMusicUrl && (
+              <audio src={backgroundMusicUrl} controls style={{ width: '100%', marginTop: '8px', height: '32px' }} />
+            )}
 
             {backgroundMusicUrl && (
               <>
