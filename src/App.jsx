@@ -857,7 +857,7 @@ const TtsServer = () => {
         </div>
       )}
 
-      <h1>🎙️ Simple TTS Server (React)</h1>
+      <h1>🎙️ Narator AI</h1>
       
       <div style={{ display: 'flex', gap: '30px', marginTop: '20px' }}>
         
