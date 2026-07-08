@@ -68,6 +68,13 @@ const TtsServer = () => {
   const [language, setLanguage] = useState('en');
   const [speed, setSpeed] = useState(1.0);
   const [temperature, setTemperature] = useState(0.7);
+
+  // ⚙️ Settings tambahan -- dulu cuma ada di Replicate Playground, sekarang
+  // dipindah semua ke sini (Speed, Temperature, Comma/Period Pause), diakses
+  // lewat modal Settings (ikon gear), bukan lagi tersebar di sidebar.
+  const [commaPauseMs, setCommaPauseMs] = useState(300);
+  const [periodPauseMs, setPeriodPauseMs] = useState(600);
+  const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [outputFormat, setOutputFormat] = useState('wav');
 
   const [customUrlText, setCustomUrlText] = useState('');
@@ -639,6 +646,8 @@ const TtsServer = () => {
         speed: parseFloat(speed),
         temperature: parseFloat(temperature),
         output_format: outputFormat,
+        comma_pause_ms: commaPauseMs,
+        period_pause_ms: periodPauseMs,
         // 🎵 Opsional -- kalau backgroundMusicUrl null, field ini nggak
         // ngaruh apa-apa (Function/predict.py cuma proses ducking kalau ada)
         background_music: backgroundMusicUrl || undefined,
@@ -659,6 +668,8 @@ const TtsServer = () => {
         speed: parseFloat(speed),
         temperature: parseFloat(temperature),
         output_format: outputFormat,
+        comma_pause_ms: commaPauseMs,
+        period_pause_ms: periodPauseMs,
         background_music: backgroundMusicUrl || undefined,
         music_volume_db: musicVolumeDb,
       };
@@ -853,6 +864,74 @@ const TtsServer = () => {
         </div>
       )}
 
+      {/* ⚙️ Modal Settings -- Speed, Temperature, Comma/Period Pause.
+          Dulu tersebar di sidebar (Speed/Temp) dan cuma ada di Replicate
+          Playground (Comma/Period Pause) -- sekarang semua terkonsentrasi
+          di sini. */}
+      {showSettingsModal && (
+        <div
+          style={{
+            position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+            backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 9998,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}
+          onClick={() => setShowSettingsModal(false)}
+        >
+          <div
+            style={{
+              backgroundColor: 'white', borderRadius: '10px', padding: '24px',
+              width: '90%', maxWidth: '420px', maxHeight: '80vh', overflowY: 'auto',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+              <h2 style={{ margin: 0 }}>⚙️ Voice Settings</h2>
+              <button
+                onClick={() => setShowSettingsModal(false)}
+                style={{ background: 'none', border: 'none', fontSize: '20px', cursor: 'pointer' }}
+              >
+                ✕
+              </button>
+            </div>
+
+            <div style={{ marginBottom: '18px' }}>
+              <label>⚡ Speed: {speed}</label>
+              <input type="range" min="0.5" max="2.0" step="0.05" value={speed} onChange={(e) => setSpeed(e.target.value)} style={{ width: '100%' }}/>
+              <small style={{ color: '#666' }}>0.5 (slow) -- 2.0 (fast)</small>
+            </div>
+
+            <div style={{ marginBottom: '18px' }}>
+              <label>🎭 Expressiveness (Temperature): {temperature}</label>
+              <input type="range" min="0.1" max="1.0" step="0.05" value={temperature} onChange={(e) => setTemperature(e.target.value)} style={{ width: '100%' }}/>
+              <small style={{ color: '#666' }}>0.1 (stable/monotone) -- 1.0 (expressive/varied)</small>
+            </div>
+
+            <div style={{ marginBottom: '18px' }}>
+              <label>⏸️ Comma Pause: {commaPauseMs}ms</label>
+              <input type="range" min="0" max="1500" step="50" value={commaPauseMs} onChange={(e) => setCommaPauseMs(parseInt(e.target.value, 10))} style={{ width: '100%' }}/>
+              <small style={{ color: '#666' }}>Pause duration after a comma</small>
+            </div>
+
+            <div style={{ marginBottom: '8px' }}>
+              <label>⏸️ Period Pause: {periodPauseMs}ms</label>
+              <input type="range" min="0" max="3000" step="50" value={periodPauseMs} onChange={(e) => setPeriodPauseMs(parseInt(e.target.value, 10))} style={{ width: '100%' }}/>
+              <small style={{ color: '#666' }}>Pause duration after a period</small>
+            </div>
+
+            <button
+              onClick={() => setShowSettingsModal(false)}
+              style={{
+                width: '100%', marginTop: '16px', padding: '10px',
+                backgroundColor: '#28a745', color: 'white', border: 'none',
+                borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold',
+              }}
+            >
+              Done
+            </button>
+          </div>
+        </div>
+      )}
+
       <h1>🎙️ Narator AI</h1>
       
       <div style={{ display: 'flex', gap: '30px', marginTop: '20px' }}>
@@ -1007,15 +1086,28 @@ const TtsServer = () => {
 
           <hr style={{ margin: '20px 0' }} />
 
-          <div style={{ marginBottom: '15px' }}>
-             <label>⚡ Speed: {speed}</label>
-             <input type="range" min="0.5" max="2.0" step="0.05" value={speed} onChange={(e) => setSpeed(e.target.value)} style={{ width: '100%' }}/>
-          </div>
-
-          <div style={{ marginBottom: '15px' }}>
-             <label>🎭 Expressiveness (Temp): {temperature}</label>
-             <input type="range" min="0.1" max="1.0" step="0.05" value={temperature} onChange={(e) => setTemperature(e.target.value)} style={{ width: '100%' }}/>
-          </div>
+          {/* ⚙️ Speed, Temperature, Comma/Period Pause sekarang di modal
+              Settings (tombol gear), tidak lagi di sidebar. */}
+          <button
+            onClick={() => setShowSettingsModal(true)}
+            style={{
+              width: '100%',
+              padding: '10px',
+              marginBottom: '15px',
+              backgroundColor: '#f5f5f5',
+              border: '1px solid #ccc',
+              borderRadius: '6px',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '8px',
+              fontSize: '14px',
+              fontWeight: 'bold',
+            }}
+          >
+            ⚙️ Voice Settings
+          </button>
 
           {/* 🎵 Background Music + Auto-Ducking */}
           <div style={{ marginBottom: '15px', padding: '10px', backgroundColor: '#fff3e0', borderRadius: '6px', border: '1px solid #ffcc80' }}>
