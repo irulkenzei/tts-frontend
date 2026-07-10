@@ -44,6 +44,12 @@ const SUBTITLE_JOBS_COLLECTION_ID = 'subtitle_jobs';
 const GENERATE_SUBTITLE_FUNCTION_ID = '6a50418800361531d89d';
 const MAX_VIDEO_DURATION_SECONDS = 30; // video pendek aja, biar biaya transkripsi murah
 
+// 📄 Konstanta buat fitur Document Converter (EPUB/DOCX/PDF/TXT 2 arah).
+// GENERATE_SUBTITLE_FUNCTION_ID WAJIB diisi sesuai Function ID yang di-deploy.
+const CONVERT_JOBS_COLLECTION_ID = 'convert_jobs';
+const CONVERT_DOCUMENT_FUNCTION_ID = '6a508da3001c54e3a019';
+const SUPPORTED_DOC_FORMATS = ['txt', 'docx', 'pdf', 'epub'];
+
 // 🎭 Deteksi nama speaker unik dari skrip dialog, urutan sesuai kemunculan
 // pertama. Pattern regex ini SENGAJA disamakan persis dengan yang dipakai
 // di predict.py & app mobile, supaya konsisten di semua platform. Nambah
@@ -153,6 +159,15 @@ const TtsServer = () => {
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [subtitleSegments, setSubtitleSegments] = useState(null);
   const [subtitleError, setSubtitleError] = useState('');
+
+  // 📄 Document Converter -- EPUB/DOCX/PDF/TXT 2 arah
+  const [convertSourceFile, setConvertSourceFile] = useState(null);
+  const [convertTargetFormat, setConvertTargetFormat] = useState('txt');
+  const [isUploadingDoc, setIsUploadingDoc] = useState(false);
+  const [isConverting, setIsConverting] = useState(false);
+  const [convertResultUrl, setConvertResultUrl] = useState(null);
+  const [convertPreviewText, setConvertPreviewText] = useState('');
+  const [convertError, setConvertError] = useState('');
 
   const formatDuration = (ms) => {
     const totalCentiseconds = Math.floor(ms / 10);
@@ -757,6 +772,105 @@ const TtsServer = () => {
   const handleDownloadAudio = () => {
     if (!generatedAudio) return;
     const downloadUrl = generatedAudio.replace('/view?', '/download?');
+    window.open(downloadUrl, '_blank');
+  };
+
+  // 📄 DOCUMENT CONVERTER -- pola upload/polling sama persis dengan
+  // handleGenerateSubtitle, cuma Function tujuannya beda (convert-document).
+
+  const detectFormatFromFileName = (fileName) => {
+    const ext = fileName.split('.').pop().toLowerCase();
+    return SUPPORTED_DOC_FORMATS.includes(ext) ? ext : null;
+  };
+
+  const handlePickDocument = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const format = detectFormatFromFileName(file.name);
+    if (!format) {
+      alert(`Unsupported file type. Please upload one of: ${SUPPORTED_DOC_FORMATS.join(', ')}`);
+      e.target.value = '';
+      return;
+    }
+
+    setConvertSourceFile(file);
+    setConvertResultUrl(null);
+    setConvertPreviewText('');
+    setConvertError('');
+  };
+
+  const handleConvertDocument = async () => {
+    if (!convertSourceFile) return;
+    setConvertError('');
+    setConvertResultUrl(null);
+    setConvertPreviewText('');
+    setIsUploadingDoc(true);
+
+    try {
+      const sourceFormat = detectFormatFromFileName(convertSourceFile.name);
+      if (!sourceFormat) throw new Error('Could not detect source file format.');
+
+      // 1. Upload dokumen sumber ke Storage
+      const renamedFile = new File([convertSourceFile], `web-doc-${Date.now()}-${convertSourceFile.name}`, {
+        type: convertSourceFile.type,
+      });
+      const uploadedFile = await storage.createFile(RECORDING_UPLOAD_BUCKET_ID, ID.unique(), renamedFile);
+      const sourceUrl = `https://fra.cloud.appwrite.io/v1/storage/buckets/${RECORDING_UPLOAD_BUCKET_ID}/files/${uploadedFile.$id}/view?project=${APPWRITE_PROJECT_ID}`;
+
+      setIsUploadingDoc(false);
+      setIsConverting(true);
+
+      // 2. Bikin dokumen job (status pending)
+      const requestId = ID.unique();
+      const title = convertSourceFile.name.replace(/\.[^/.]+$/, '');
+      await databases.createDocument(DATABASE_ID, CONVERT_JOBS_COLLECTION_ID, requestId, {
+        status: 'pending',
+        source_url: sourceUrl,
+      });
+
+      // 3. Panggil Function ASYNC
+      await fetch(`${APPWRITE_ENDPOINT}/functions/${CONVERT_DOCUMENT_FUNCTION_ID}/executions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Appwrite-Project': APPWRITE_PROJECT_ID,
+        },
+        body: JSON.stringify({
+          body: JSON.stringify({ requestId, sourceUrl, sourceFormat, targetFormat: convertTargetFormat, title }),
+          async: true,
+        }),
+      });
+
+      // 4. Polling dokumen job
+      let attempts = 0;
+      const maxAttempts = 40; // 40 x 3s = 2 menit maksimal nunggu
+      let job = null;
+      while (attempts < maxAttempts) {
+        await new Promise((resolve) => setTimeout(resolve, 3000));
+        job = await databases.getDocument(DATABASE_ID, CONVERT_JOBS_COLLECTION_ID, requestId);
+        if (job.status === 'completed' || job.status === 'failed') break;
+        attempts++;
+      }
+
+      if (!job || job.status !== 'completed') {
+        throw new Error(job?.error_message || 'Conversion timed out or failed.');
+      }
+
+      setConvertResultUrl(job.output_url);
+      setConvertPreviewText(job.extracted_text_preview || '');
+    } catch (e) {
+      console.error('Failed to convert document:', e);
+      setConvertError(e.message || 'Failed to convert document. Please try again.');
+    } finally {
+      setIsUploadingDoc(false);
+      setIsConverting(false);
+    }
+  };
+
+  const handleDownloadConverted = () => {
+    if (!convertResultUrl) return;
+    const downloadUrl = convertResultUrl.replace('/view?', '/download?');
     window.open(downloadUrl, '_blank');
   };
 
@@ -1390,9 +1504,74 @@ const TtsServer = () => {
              >
                 🎬 Subtitle Generator
              </button>
+             <button 
+                onClick={() => setMode('convert')}
+                style={{ padding: '10px', backgroundColor: mode === 'convert' ? '#00C2FF' : '#f5f5f5', color: mode === 'convert' ? 'white' : 'black', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
+             >
+                📄 Document Converter
+             </button>
           </div>
 
-          {mode === 'subtitle' ? (
+          {mode === 'convert' ? (
+            <div>
+              <p style={{ color: '#666', fontSize: '14px' }}>
+                Upload a document (.epub, .docx, .pdf, or .txt), pick a target format, and we'll convert it. Note: this preserves text content but not complex formatting/images.
+              </p>
+
+              <div style={{ marginBottom: '16px' }}>
+                <input type="file" accept=".epub,.docx,.pdf,.txt" onChange={handlePickDocument} disabled={isUploadingDoc || isConverting} />
+              </div>
+
+              {convertSourceFile && (
+                <div style={{ marginBottom: '16px' }}>
+                  <label style={{ fontWeight: 'bold', display: 'block', marginBottom: '6px' }}>Convert to:</label>
+                  <select
+                    value={convertTargetFormat}
+                    onChange={(e) => setConvertTargetFormat(e.target.value)}
+                    disabled={isUploadingDoc || isConverting}
+                    style={{ width: '100%', padding: '8px' }}
+                  >
+                    {SUPPORTED_DOC_FORMATS.map((fmt) => (
+                      <option key={fmt} value={fmt}>.{fmt.toUpperCase()}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              {convertError && (
+                <div style={{ backgroundColor: '#fee', border: '1px solid #fcc', borderRadius: '6px', padding: '10px', marginBottom: '16px', color: '#c00', fontSize: '13px' }}>
+                  {convertError}
+                </div>
+              )}
+
+              <button
+                onClick={handleConvertDocument}
+                disabled={!convertSourceFile || isUploadingDoc || isConverting}
+                style={{
+                  width: '100%', padding: '12px',
+                  backgroundColor: (isUploadingDoc || isConverting || !convertSourceFile) ? '#ccc' : '#5B5BF6',
+                  color: '#fff', border: 'none', borderRadius: '8px', fontWeight: 'bold',
+                  cursor: (isUploadingDoc || isConverting) ? 'default' : 'pointer',
+                }}
+              >
+                {isUploadingDoc ? 'Uploading document...' : isConverting ? 'Converting...' : 'Convert Document'}
+              </button>
+
+              {convertResultUrl && (
+                <div style={{ marginTop: '24px', padding: '16px', backgroundColor: '#e9f7ef', borderRadius: '8px' }}>
+                  <h3 style={{ marginTop: 0 }}>✅ Conversion Complete</h3>
+                  {convertPreviewText && (
+                    <p style={{ fontSize: '13px', lineHeight: '1.6', color: '#333' }}>
+                      {convertPreviewText}{convertPreviewText.length >= 500 ? '...' : ''}
+                    </p>
+                  )}
+                  <button onClick={handleDownloadConverted} style={{ width: '100%', padding: '10px', backgroundColor: '#28a745', color: '#fff', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer', marginTop: '12px' }}>
+                    ⬇ Download .{convertTargetFormat.toUpperCase()}
+                  </button>
+                </div>
+              )}
+            </div>
+          ) : mode === 'subtitle' ? (
             <div>
               <p style={{ color: '#666', fontSize: '14px' }}>
                 Upload a short video (max {MAX_VIDEO_DURATION_SECONDS} seconds), and we'll transcribe the audio and generate a downloadable .srt or .vtt subtitle file.
