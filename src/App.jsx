@@ -3,7 +3,7 @@ import { Client, Functions, Databases, Storage, ID, Query, Account } from 'appwr
 import { segmentsToPlainText, segmentsToSrt, segmentsToVtt } from './subtitleUtils';
 import './App.css';
 
-// Konfigurasi Appwrite
+// Appwrite Configuration
 const APPWRITE_ENDPOINT = 'https://fra.cloud.appwrite.io/v1';
 const APPWRITE_PROJECT_ID = '6a3a48a1003d333b0268';
 
@@ -35,6 +35,7 @@ const CONVERT_JOBS_COLLECTION_ID = 'convert_jobs';
 const CONVERT_DOCUMENT_FUNCTION_ID = '6a508da3001c54e3a019';
 const SUPPORTED_DOC_FORMATS = ['txt', 'docx', 'pdf', 'epub'];
 
+// Parse speakers from script
 function parseSpeakersFromScript(script) {
   if (!script || typeof script !== 'string') return [];
   const names = [];
@@ -330,7 +331,7 @@ const TtsServer = () => {
         }, 1000);
       } catch (err) {
         console.error("Failed to access microphone:", err);
-        showToast("Izinkan akses microphone untuk merekam suara", 3500, 'error');
+        showToast("Please grant microphone access to record your voice", 3500, 'error');
       }
     }
   };
@@ -355,10 +356,10 @@ const TtsServer = () => {
       setCustomUrlText(fileUrl);
       setVoiceSource('custom');
       setSelectedLibraryVoiceId('');
-      showToast('Rekaman berhasil diupload dan digunakan sebagai voice reference!', 3500, 'success');
+      showToast('Recording uploaded successfully and used as voice reference!', 3500, 'success');
     } catch (err) {
       console.error('Failed to upload recording:', err);
-      showToast('Gagal upload rekaman: ' + err.message, 3500, 'error');
+      showToast('Failed to upload recording: ' + err.message, 3500, 'error');
     } finally {
       setIsUploadingRecording(false);
     }
@@ -366,19 +367,19 @@ const TtsServer = () => {
 
   const handleCloneVoice = async () => {
     if (isCloneLimitReached) {
-      showToast('Anda sudah mencapai limit voice clone gratis. Upgrade ke Pro!', 3500, 'warning');
+      showToast('You have reached the free voice clone limit. Upgrade to Pro!', 3500, 'warning');
       return;
     }
     if (!recordedBlob) {
-      showToast('Silakan rekam suara Anda terlebih dahulu', 3500, 'warning');
+      showToast('Please record your voice first', 3500, 'warning');
       return;
     }
     if (!cloneVoiceName.trim()) {
-      showToast('Berikan nama untuk voice ini', 3500, 'warning');
+      showToast('Please provide a name for this voice', 3500, 'warning');
       return;
     }
     if (!userId) {
-      showToast('Tidak dapat memverifikasi akun. Silakan refresh halaman', 3500, 'error');
+      showToast('Could not verify account. Please refresh the page', 3500, 'error');
       return;
     }
 
@@ -425,10 +426,10 @@ const TtsServer = () => {
       const savedName = cloneVoiceName.trim();
       setCloneVoiceName('');
       discardRecording();
-      showToast(`Voice "${savedName}" berhasil disimpan!`, 3500, 'success');
+      showToast(`Voice "${savedName}" saved successfully!`, 3500, 'success');
     } catch (err) {
       console.error('Failed to clone voice:', err);
-      showToast('Gagal menyimpan voice: ' + err.message, 3500, 'error');
+      showToast('Failed to save voice: ' + err.message, 3500, 'error');
     } finally {
       setIsCloningVoice(false);
     }
@@ -452,7 +453,7 @@ const TtsServer = () => {
     if (!file) return;
 
     if (!file.name.toLowerCase().endsWith('.wav')) {
-      showToast('Silakan pilih file .wav', 3500, 'warning');
+      showToast('Please select a .wav file', 3500, 'warning');
       e.target.value = '';
       return;
     }
@@ -470,10 +471,10 @@ const TtsServer = () => {
       setCustomUrlText(fileUrl);
       setVoiceSource('custom');
       setSelectedLibraryVoiceId('');
-      showToast(`File "${file.name}" berhasil diupload!`, 3500, 'success');
+      showToast(`File "${file.name}" uploaded successfully!`, 3500, 'success');
     } catch (err) {
       console.error('Failed to upload local file:', err);
-      showToast('Gagal upload file: ' + err.message, 3500, 'error');
+      showToast('Failed to upload file: ' + err.message, 3500, 'error');
     } finally {
       setIsUploadingFile(false);
       e.target.value = '';
@@ -517,7 +518,7 @@ const TtsServer = () => {
         duration = await getAudioFileDuration(file);
       } catch (durationErr) {
         console.error('Failed to read audio duration:', durationErr);
-        showToast('Tidak dapat membaca file audio ini', 3500, 'error');
+        showToast('Could not read this audio file', 3500, 'error');
         setIsUploadingMusic(false);
         e.target.value = '';
         return;
@@ -525,7 +526,7 @@ const TtsServer = () => {
 
       if (duration > MAX_MUSIC_DURATION_SECONDS) {
         showToast(
-          `Musik latar maksimal ${MAX_MUSIC_DURATION_SECONDS} detik (file Anda ${Math.round(duration)}s). Potong terlebih dahulu.`,
+          `Background music must be ${MAX_MUSIC_DURATION_SECONDS} seconds or shorter (yours is ${Math.round(duration)}s). Please trim it first.`,
           3500,
           'warning'
         );
@@ -548,7 +549,7 @@ const TtsServer = () => {
             setBackgroundMusicName(doc.file_name);
             setIsUploadingMusic(false);
             e.target.value = '';
-            showToast('Musik ini sudah pernah diupload sebelumnya - menggunakan file yang ada');
+            showToast('This music was already uploaded - reusing existing file');
             return;
           }
         } catch (dedupErr) {
@@ -583,10 +584,10 @@ const TtsServer = () => {
 
       setBackgroundMusicUrl(fileUrl);
       setBackgroundMusicName(file.name);
-      showToast('Musik latar berhasil diupload!', 3500, 'success');
+      showToast('Background music uploaded successfully!', 3500, 'success');
     } catch (err) {
       console.error('Failed to upload background music:', err);
-      showToast('Gagal upload musik: ' + err.message, 3500, 'error');
+      showToast('Failed to upload music: ' + err.message, 3500, 'error');
     } finally {
       setIsUploadingMusic(false);
       e.target.value = '';
@@ -623,13 +624,13 @@ const TtsServer = () => {
       duration = await getVideoDuration(file);
     } catch (durationErr) {
       console.error('Failed to read video duration:', durationErr);
-      showToast('Tidak dapat membaca file video ini', 3500, 'error');
+      showToast('Could not read this video file', 3500, 'error');
       e.target.value = '';
       return;
     }
 
     if (duration > MAX_VIDEO_DURATION_SECONDS) {
-      showToast(`Video maksimal ${MAX_VIDEO_DURATION_SECONDS} detik (file Anda ${Math.round(duration)}s)`, 3500, 'warning');
+      showToast(`Video must be ${MAX_VIDEO_DURATION_SECONDS} seconds or shorter (yours is ${Math.round(duration)}s)`, 3500, 'warning');
       e.target.value = '';
       return;
     }
@@ -685,14 +686,14 @@ const TtsServer = () => {
       }
 
       if (!job || job.status !== 'completed') {
-        throw new Error(job?.error_message || 'Transkripsi timeout atau gagal.');
+        throw new Error(job?.error_message || 'Transcription timed out or failed.');
       }
 
       setSubtitleSegments(JSON.parse(job.segments));
-      showToast('Subtitle berhasil dibuat!', 3500, 'success');
+      showToast('Subtitle generated successfully!', 3500, 'success');
     } catch (e) {
       console.error('Failed to generate subtitle:', e);
-      setSubtitleError(e.message || 'Gagal membuat subtitle. Coba lagi.');
+      setSubtitleError(e.message || 'Failed to generate subtitle. Please try again.');
     } finally {
       setIsUploadingVideo(false);
       setIsTranscribing(false);
@@ -731,7 +732,7 @@ const TtsServer = () => {
 
     const format = detectFormatFromFileName(file.name);
     if (!format) {
-      showToast(`Format tidak didukung. Silakan upload: ${SUPPORTED_DOC_FORMATS.join(', ')}`, 3500, 'warning');
+      showToast(`Unsupported file type. Please upload: ${SUPPORTED_DOC_FORMATS.join(', ')}`, 3500, 'warning');
       e.target.value = '';
       return;
     }
@@ -751,7 +752,7 @@ const TtsServer = () => {
 
     try {
       const sourceFormat = detectFormatFromFileName(convertSourceFile.name);
-      if (!sourceFormat) throw new Error('Tidak dapat mendeteksi format file.');
+      if (!sourceFormat) throw new Error('Could not detect source file format.');
 
       const renamedFile = new File([convertSourceFile], `web-doc-${Date.now()}-${convertSourceFile.name}`, {
         type: convertSourceFile.type,
@@ -792,15 +793,15 @@ const TtsServer = () => {
       }
 
       if (!job || job.status !== 'completed') {
-        throw new Error(job?.error_message || 'Konversi timeout atau gagal.');
+        throw new Error(job?.error_message || 'Conversion timed out or failed.');
       }
 
       setConvertResultUrl(job.output_url);
       setConvertPreviewText(job.extracted_text_preview || '');
-      showToast('Dokumen berhasil dikonversi!', 3500, 'success');
+      showToast('Document converted successfully!', 3500, 'success');
     } catch (e) {
       console.error('Failed to convert document:', e);
-      setConvertError(e.message || 'Gagal mengkonversi dokumen. Coba lagi.');
+      setConvertError(e.message || 'Failed to convert document. Please try again.');
     } finally {
       setIsUploadingDoc(false);
       setIsConverting(false);
@@ -827,7 +828,7 @@ const TtsServer = () => {
     } catch (err) {
       console.error('Failed to update like status:', err);
       setIsLiked(!newLikedState);
-      showToast('Gagal menyimpan status like: ' + err.message, 3500, 'error');
+      showToast('Failed to save like status: ' + err.message, 3500, 'error');
     }
   };
 
@@ -852,13 +853,13 @@ const TtsServer = () => {
           title: 'NarratorAI Voice Over',
         });
       } else {
-        showToast("Browser ini tidak mendukung share langsung - download file untuk dibagikan");
+        showToast("Direct sharing isn't supported on this browser - download instead");
         handleDownloadAudio();
       }
     } catch (err) {
       if (err.name === 'AbortError') return;
       console.error('Failed to share audio:', err);
-      showToast("Browser ini tidak mendukung share langsung");
+      showToast("Direct sharing isn't supported on this browser");
       handleDownloadAudio();
     }
   };
@@ -866,15 +867,15 @@ const TtsServer = () => {
   const handleGenerateSpeech = async (e) => {
     e.preventDefault();
     if (isLimitReached) {
-      showToast('Anda sudah mencapai limit generate gratis. Upgrade ke Pro!', 3500, 'warning');
+      showToast('You have reached the free generation limit. Upgrade to Pro!', 3500, 'warning');
       return;
     }
     if (mode === 'single' && !text) {
-      showToast("Teks tidak boleh kosong!", 3500, 'warning');
+      showToast("Text cannot be empty!", 3500, 'warning');
       return;
     }
     if (mode === 'dialogue' && !dialogueScript) {
-      showToast("Script dialogue tidak boleh kosong!", 3500, 'warning');
+      showToast("Dialogue script cannot be empty!", 3500, 'warning');
       return;
     }
 
@@ -882,12 +883,12 @@ const TtsServer = () => {
 
     if (mode === 'dialogue') {
       if (detectedSpeakerNames.length === 0) {
-        showToast('Tidak ada speaker terdeteksi. Gunakan format [Nama]: teks...', 3500, 'warning');
+        showToast('No speakers detected. Use format [Name]: text...', 3500, 'warning');
         return;
       }
       const missing = detectedSpeakerNames.filter((name) => !getSpeakerVoiceUrl(name));
       if (missing.length > 0) {
-        showToast(`Tetapkan voice untuk: ${missing.join(', ')}`, 3500, 'warning');
+        showToast(`Please assign a voice for: ${missing.join(', ')}`, 3500, 'warning');
         return;
       }
 
@@ -913,7 +914,7 @@ const TtsServer = () => {
       const finalSpeakerWavUrl = voiceSource === 'library' ? getLibraryVoiceUrl() : customUrlText;
 
       if (!finalSpeakerWavUrl) {
-        showToast('Pilih voice dari library, masukkan URL custom, atau rekam suara Anda terlebih dahulu.', 3500, 'warning');
+        showToast('Please select a voice from library, enter a custom URL, or record your voice first.', 3500, 'warning');
         return;
       }
 
@@ -969,7 +970,7 @@ const TtsServer = () => {
 
       if (!createExecRes.ok) {
         const errBody = await createExecRes.json().catch(() => ({}));
-        throw new Error(errBody.message || `Gagal memulai eksekusi (status ${createExecRes.status})`);
+        throw new Error(errBody.message || `Failed to start execution (status ${createExecRes.status})`);
       }
 
       let jobDoc = null;
@@ -978,7 +979,7 @@ const TtsServer = () => {
 
       while (!jobDoc || jobDoc.status === 'pending') {
         if (Date.now() - pollStart > maxWaitMs) {
-          throw new Error('Generate timeout. Cek Appwrite Console logs.');
+          throw new Error('Generation timed out. Please check Appwrite Console logs.');
         }
         await new Promise((resolve) => setTimeout(resolve, 3000));
         try {
@@ -989,7 +990,7 @@ const TtsServer = () => {
       }
 
       if (jobDoc.status === 'failed') {
-        throw new Error(jobDoc.error_message || 'Eksekusi function gagal. Cek Appwrite Console logs.');
+        throw new Error(jobDoc.error_message || 'Function execution failed. Check Appwrite Console logs.');
       }
 
       const data = { success: true, audioUrl: jobDoc.audio_url, fileName: jobDoc.file_name };
@@ -998,7 +999,7 @@ const TtsServer = () => {
         setGeneratedAudio(data.audioUrl);
         setGeneratedFileName(data.fileName || null);
         setCurrentJobId(requestId);
-        showToast('Audio berhasil dibuat!', 3500, 'success');
+        showToast('Audio generated successfully!', 3500, 'success');
 
         try {
           const downloadUrl = data.audioUrl.replace('/view?', '/download?');
@@ -1025,7 +1026,7 @@ const TtsServer = () => {
           }
         }
       } else {
-        throw new Error(data.error || "Gagal membuat audio.");
+        throw new Error(data.error || "Failed to generate audio.");
       }
     } catch (err) {
       console.error(err);
@@ -1061,7 +1062,7 @@ const TtsServer = () => {
     const setTargetText = isSingle ? setText : setDialogueScript;
 
     if (currentText.length + pauseTag.length > MAX_CHARS) {
-      showToast("Kapasitas teks tidak cukup untuk pause!", 3500, 'warning');
+      showToast("Not enough text capacity for pause!", 3500, 'warning');
       e.target.value = "";
       return;
     }
@@ -1121,7 +1122,7 @@ const TtsServer = () => {
       <header className="app-header">
         <div className="header-content">
           <h1 className="app-title">🎙️ NarratorAI</h1>
-          <p className="app-subtitle">Text-to-Speech dengan AI yang Powerful</p>
+          <p className="app-subtitle">Powerful AI Text-to-Speech Platform</p>
         </div>
       </header>
 
@@ -1160,10 +1161,10 @@ const TtsServer = () => {
         <div className="content-wrapper">
           <aside className="settings-sidebar">
             <div className="card settings-card">
-              <h3 className="card-title">⚙️ Pengaturan Voice</h3>
+              <h3 className="card-title">⚙️ Voice Settings</h3>
               
               <div className="setting-group">
-                <label>🌐 Bahasa</label>
+                <label>🌐 Language</label>
                 <select value={language} onChange={(e) => setLanguage(e.target.value)} className="form-select">
                   <option value="en">English</option>
                   <option value="es">Spanish</option>
@@ -1186,29 +1187,29 @@ const TtsServer = () => {
               </div>
 
               <div className="setting-group">
-                <label>⚡ Kecepatan: <strong>{speed}</strong></label>
+                <label>⚡ Speed: <strong>{speed}</strong></label>
                 <input type="range" min="0.5" max="2.0" step="0.05" value={speed} onChange={(e) => setSpeed(e.target.value)} className="form-range"/>
-                <small>0.5 (lambat) — 2.0 (cepat)</small>
+                <small>0.5 (slow) — 2.0 (fast)</small>
               </div>
 
               <div className="setting-group">
-                <label>🎭 Ekspresi: <strong>{temperature}</strong></label>
+                <label>🎭 Expressiveness: <strong>{temperature}</strong></label>
                 <input type="range" min="0.1" max="1.0" step="0.05" value={temperature} onChange={(e) => setTemperature(e.target.value)} className="form-range"/>
-                <small>0.1 (stabil) — 1.0 (ekspresif)</small>
+                <small>0.1 (stable) — 1.0 (expressive)</small>
               </div>
 
               <div className="setting-group">
-                <label>⏸️ Jeda Koma: <strong>{commaPauseMs}ms</strong></label>
+                <label>⏸️ Comma Pause: <strong>{commaPauseMs}ms</strong></label>
                 <input type="range" min="0" max="1500" step="50" value={commaPauseMs} onChange={(e) => setCommaPauseMs(parseInt(e.target.value, 10))} className="form-range"/>
               </div>
 
               <div className="setting-group">
-                <label>⏸️ Jeda Titik: <strong>{periodPauseMs}ms</strong></label>
+                <label>⏸️ Period Pause: <strong>{periodPauseMs}ms</strong></label>
                 <input type="range" min="0" max="5000" step="50" value={periodPauseMs} onChange={(e) => setPeriodPauseMs(parseInt(e.target.value, 10))} className="form-range"/>
               </div>
 
               <div className="setting-group">
-                <label>💾 Format Output</label>
+                <label>💾 Output Format</label>
                 <select value={outputFormat} onChange={(e) => setOutputFormat(e.target.value)} className="form-select">
                   <option value="wav">WAV</option>
                   <option value="mp3">MP3</option>
@@ -1220,7 +1221,7 @@ const TtsServer = () => {
             </div>
 
             <div className="card">
-              <h3 className="card-title">🎵 Pilih Voice</h3>
+              <h3 className="card-title">🎵 Select Voice</h3>
 
               <div className="setting-group">
                 <label>📚 Voice Library</label>
@@ -1231,7 +1232,7 @@ const TtsServer = () => {
                   className="form-select"
                 >
                   <option value="">
-                    {loadingLibrary ? 'Loading...' : 'Pilih voice'}
+                    {loadingLibrary ? 'Loading...' : 'Select voice'}
                   </option>
                   {voiceLibrary.map((voice) => (
                     <option key={voice.$id} value={voice.$id}>
@@ -1241,7 +1242,7 @@ const TtsServer = () => {
                 </select>
               </div>
 
-              <div className="divider">atau</div>
+              <div className="divider">or</div>
 
               <div className="setting-group">
                 <label>🔗 Custom URL</label>
@@ -1258,7 +1259,7 @@ const TtsServer = () => {
               </div>
 
               <div className="setting-group">
-                <label>📁 Upload File WAV</label>
+                <label>📁 Upload WAV File</label>
                 <input
                   type="file"
                   accept=".wav,audio/wav"
@@ -1270,12 +1271,12 @@ const TtsServer = () => {
               </div>
 
               <div className="recording-section">
-                <label>🎙️ Rekam Suara</label>
+                <label>🎙️ Record Voice</label>
                 <button 
                   onClick={toggleRecording} 
                   className={`btn-record ${isRecording ? 'recording' : ''}`}
                 >
-                  {isRecording ? "⏹️ Berhenti" : "🎤 Rekam"}
+                  {isRecording ? "⏹️ Stop" : "🎤 Record"}
                 </button>
                 {isRecording && (
                   <div className="recording-timer">
@@ -1294,12 +1295,12 @@ const TtsServer = () => {
                     </div>
 
                     <div className="clone-section">
-                      <label>🧬 Simpan sebagai Voice Baru</label>
+                      <label>🧬 Save as New Voice</label>
                       <input
                         type="text"
                         value={cloneVoiceName}
                         onChange={(e) => setCloneVoiceName(e.target.value)}
-                        placeholder="Nama voice (e.g., Suara Saya)"
+                        placeholder="Voice name (e.g., My Voice)"
                         disabled={isCloneLimitReached}
                         className="form-input"
                       />
@@ -1320,13 +1321,13 @@ const TtsServer = () => {
 
               {myClonedVoices.length > 0 && (
                 <div className="setting-group">
-                  <label>🧬 Voice Saya</label>
+                  <label>🧬 My Cloned Voices</label>
                   <select
                     value={selectedClonedVoiceId}
                     onChange={handleSelectClonedVoice}
                     className="form-select"
                   >
-                    <option value="">Pilih voice Anda</option>
+                    <option value="">Select your voice</option>
                     {myClonedVoices.map((voice) => (
                       <option key={voice.$id} value={voice.$id}>
                         {voice.name}
@@ -1337,7 +1338,7 @@ const TtsServer = () => {
               )}
 
               <div className="music-section">
-                <h4>🎵 Musik Latar (Opsional)</h4>
+                <h4>🎵 Background Music (Optional)</h4>
                 {backgroundMusicName ? (
                   <div className="music-info">
                     <span>🎶 {backgroundMusicName.substring(0, 30)}</span>
@@ -1378,17 +1379,17 @@ const TtsServer = () => {
           <section className="content-main">
             {mode === 'convert' ? (
               <div className="card">
-                <h2 className="card-title">📄 Konversi Dokumen</h2>
-                <p className="card-description">Upload dokumen (.epub, .docx, .pdf, .txt) dan konversi ke format lain.</p>
+                <h2 className="card-title">📄 Document Converter</h2>
+                <p className="card-description">Upload a document (.epub, .docx, .pdf, .txt) and convert to another format.</p>
 
                 <div className="setting-group">
-                  <label>📂 Pilih File</label>
+                  <label>📂 Select File</label>
                   <input type="file" accept=".epub,.docx,.pdf,.txt" onChange={handlePickDocument} disabled={isUploadingDoc || isConverting} className="form-file" />
                 </div>
 
                 {convertSourceFile && (
                   <div className="setting-group">
-                    <label>🔄 Konversi ke</label>
+                    <label>🔄 Convert To</label>
                     <select value={convertTargetFormat} onChange={(e) => setConvertTargetFormat(e.target.value)} disabled={isUploadingDoc || isConverting} className="form-select">
                       {SUPPORTED_DOC_FORMATS.map((fmt) => (
                         <option key={fmt} value={fmt}>.{fmt.toUpperCase()}</option>
@@ -1405,7 +1406,7 @@ const TtsServer = () => {
 
                 {convertResultUrl && (
                   <div className="success-box">
-                    <h3>✅ Berhasil Dikonversi</h3>
+                    <h3>✅ Conversion Complete</h3>
                     {convertPreviewText && <p className="preview-text">{convertPreviewText.substring(0, 300)}...</p>}
                     <button onClick={handleDownloadConverted} className="btn-full btn-success">⬇️ Download .{convertTargetFormat.toUpperCase()}</button>
                   </div>
@@ -1413,11 +1414,11 @@ const TtsServer = () => {
               </div>
             ) : mode === 'subtitle' ? (
               <div className="card">
-                <h2 className="card-title">🎬 Pembuat Subtitle</h2>
-                <p className="card-description">Upload video (max {MAX_VIDEO_DURATION_SECONDS}s) dan generate subtitle .srt atau .vtt</p>
+                <h2 className="card-title">🎬 Subtitle Generator</h2>
+                <p className="card-description">Upload a video (max {MAX_VIDEO_DURATION_SECONDS}s) and generate .srt or .vtt subtitle file.</p>
 
                 <div className="setting-group">
-                  <label>🎥 Pilih Video</label>
+                  <label>🎥 Select Video</label>
                   <input type="file" accept="video/*" onChange={handlePickSubtitleVideo} disabled={isUploadingVideo || isTranscribing} className="form-file" />
                 </div>
 
@@ -1429,7 +1430,7 @@ const TtsServer = () => {
 
                 {subtitleSegments && (
                   <div className="success-box">
-                    <h3>✅ Subtitle Siap</h3>
+                    <h3>✅ Subtitle Ready</h3>
                     <p className="preview-text">{segmentsToPlainText(subtitleSegments).substring(0, 300)}...</p>
                     <div className="button-row">
                       <button onClick={() => handleDownloadSubtitle('srt')} className="btn-half btn-primary">⬇️ .SRT</button>
@@ -1443,7 +1444,7 @@ const TtsServer = () => {
                 <h2 className="card-title">{mode === 'single' ? '🎙️ Single Voice' : '🎭 Dialogue Mode'}</h2>
 
                 <div className="setting-group">
-                  <label>{mode === 'single' ? 'Masukkan Teks' : 'Script Dialogue'}</label>
+                  <label>{mode === 'single' ? 'Enter Text' : 'Dialogue Script'}</label>
                   {renderTextareaHeader(mode === 'single' ? text.length : dialogueScript.length)}
                   
                   <textarea 
@@ -1453,13 +1454,13 @@ const TtsServer = () => {
                     maxLength={MAX_CHARS}
                     rows="10" 
                     className="form-textarea"
-                    placeholder={mode === 'single' ? 'Ketik atau paste teks Anda...' : '[Nama]: Teks dialogue...\n[Nama2]: Balasan...'}
+                    placeholder={mode === 'single' ? 'Type or paste your text here...' : '[Name]: Dialogue text...\n[Name2]: Response...'}
                   />
                 </div>
 
                 {mode === 'dialogue' && detectedSpeakerNames.length > 0 && (
                   <div className="speakers-box">
-                    <h4>🎭 Tetapkan Voice per Speaker</h4>
+                    <h4>🎭 Assign Voice per Speaker</h4>
                     {detectedSpeakerNames.map((name) => {
                       const hasVoice = !!getSpeakerVoiceUrl(name);
                       return (
@@ -1477,7 +1478,7 @@ const TtsServer = () => {
                           </select>
                           <input
                             type="text"
-                            placeholder="Atau URL custom..."
+                            placeholder="Or custom voice URL..."
                             value={speakerAssignments[name]?.source === 'custom' ? speakerAssignments[name]?.customUrl || '' : ''}
                             onChange={(e) => handleAssignSpeakerCustomUrl(name, e.target.value)}
                             className="form-input"
@@ -1497,7 +1498,7 @@ const TtsServer = () => {
                 </button>
 
                 {!checkingQuota && !isLimitReached && (
-                  <small style={{display: 'block', marginTop: '6px', color: '#666'}}>{generationCount} / {MAX_FREE_GENERATIONS} generations used</small>
+                  <small style={{display: 'block', marginTop: '6px', color: '#b0bec5'}}>{generationCount} / {MAX_FREE_GENERATIONS} generations used</small>
                 )}
               </form>
             )}
