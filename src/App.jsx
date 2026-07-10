@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { Client, Functions, Databases, Storage, ID, Query, Account } from 'appwrite';
+import { segmentsToPlainText, segmentsToSrt, segmentsToVtt } from './subtitleUtils';
 
 // 1. Inisialisasi Appwrite
 // Ganti dengan Project ID dan Endpoint Anda
@@ -35,6 +36,13 @@ const MAX_FREE_CLONES = 2; // limit gratis clone voice, sama kayak generate
 // perlu bisa fetch URL file ini dari luar (public read, bukan cuma
 // authenticated user Anda sendiri).
 const RECORDING_UPLOAD_BUCKET_ID = '6a40a942000c72f7a8f1';
+
+// 🎬 Konstanta buat fitur Subtitle Generator (upload video -> transkripsi
+// -> download .srt/.vtt). GENERATE_SUBTITLE_FUNCTION_ID WAJIB diisi sesuai
+// Function ID yang di-deploy (lihat generate-subtitle/index.js).
+const SUBTITLE_JOBS_COLLECTION_ID = 'subtitle_jobs';
+const GENERATE_SUBTITLE_FUNCTION_ID = '6a50418800361531d89d';
+const MAX_VIDEO_DURATION_SECONDS = 30; // video pendek aja, biar biaya transkripsi murah
 
 // 🎭 Deteksi nama speaker unik dari skrip dialog, urutan sesuai kemunculan
 // pertama. Pattern regex ini SENGAJA disamakan persis dengan yang dipakai
@@ -138,6 +146,13 @@ const TtsServer = () => {
   const [backgroundMusicName, setBackgroundMusicName] = useState(null);
   const [musicVolumeDb, setMusicVolumeDb] = useState(-6);
   const [isUploadingMusic, setIsUploadingMusic] = useState(false);
+
+  // 🎬 Subtitle Generator -- upload video, transkripsi, generate .srt/.vtt
+  const [subtitleVideoFile, setSubtitleVideoFile] = useState(null);
+  const [isUploadingVideo, setIsUploadingVideo] = useState(false);
+  const [isTranscribing, setIsTranscribing] = useState(false);
+  const [subtitleSegments, setSubtitleSegments] = useState(null);
+  const [subtitleError, setSubtitleError] = useState('');
 
   const formatDuration = (ms) => {
     const totalCentiseconds = Math.floor(ms / 10);
@@ -610,6 +625,133 @@ const TtsServer = () => {
   const handleRemoveBackgroundMusic = () => {
     setBackgroundMusicUrl(null);
     setBackgroundMusicName(null);
+  };
+
+  // 🎬 SUBTITLE GENERATOR -- pola upload/polling sama persis dengan
+  // handleGenerateSpeech (async execution + database polling), cuma
+  // Function tujuannya beda (generate-subtitle, bukan Replicate TTS).
+
+  // Baca durasi video pakai elemen <video> browser -- sama pola dengan cek
+  // durasi musik latar (elemen <audio>).
+  const getVideoDuration = (file) => {
+    return new Promise((resolve, reject) => {
+      const videoEl = document.createElement('video');
+      videoEl.preload = 'metadata';
+      videoEl.onloadedmetadata = () => {
+        URL.revokeObjectURL(videoEl.src);
+        resolve(videoEl.duration);
+      };
+      videoEl.onerror = () => {
+        URL.revokeObjectURL(videoEl.src);
+        reject(new Error('Could not read video duration'));
+      };
+      videoEl.src = URL.createObjectURL(file);
+    });
+  };
+
+  const handlePickSubtitleVideo = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    let duration;
+    try {
+      duration = await getVideoDuration(file);
+    } catch (durationErr) {
+      console.error('Failed to read video duration:', durationErr);
+      alert('Could not read this video file. Please try a different file.');
+      e.target.value = '';
+      return;
+    }
+
+    if (duration > MAX_VIDEO_DURATION_SECONDS) {
+      alert(`Video must be ${MAX_VIDEO_DURATION_SECONDS} seconds or shorter (yours is ${Math.round(duration)}s). Please trim it first.`);
+      e.target.value = '';
+      return;
+    }
+
+    setSubtitleVideoFile(file);
+    setSubtitleSegments(null);
+    setSubtitleError('');
+  };
+
+  const handleGenerateSubtitle = async () => {
+    if (!subtitleVideoFile) return;
+    setSubtitleError('');
+    setSubtitleSegments(null);
+    setIsUploadingVideo(true);
+
+    try {
+      // 1. Upload video ke Appwrite Storage
+      const renamedFile = new File([subtitleVideoFile], `web-video-${Date.now()}-${subtitleVideoFile.name}`, {
+        type: subtitleVideoFile.type,
+      });
+      const uploadedFile = await storage.createFile(RECORDING_UPLOAD_BUCKET_ID, ID.unique(), renamedFile);
+      const videoUrl = `https://fra.cloud.appwrite.io/v1/storage/buckets/${RECORDING_UPLOAD_BUCKET_ID}/files/${uploadedFile.$id}/view?project=${APPWRITE_PROJECT_ID}`;
+
+      setIsUploadingVideo(false);
+      setIsTranscribing(true);
+
+      // 2. Bikin dokumen job (status pending), requestId = document ID
+      const requestId = ID.unique();
+      await databases.createDocument(DATABASE_ID, SUBTITLE_JOBS_COLLECTION_ID, requestId, {
+        user_id: userId,
+        status: 'pending',
+        video_url: videoUrl,
+      });
+
+      // 3. Panggil Function ASYNC lewat REST langsung (sama pola dengan
+      // pemanggilan FUNCTION_ID buat TTS di handleGenerateSpeech)
+      await fetch(`${APPWRITE_ENDPOINT}/functions/${GENERATE_SUBTITLE_FUNCTION_ID}/executions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Appwrite-Project': APPWRITE_PROJECT_ID,
+        },
+        body: JSON.stringify({
+          body: JSON.stringify({ requestId, videoUrl }),
+          async: true,
+        }),
+      });
+
+      // 4. Polling dokumen job sampai status berubah
+      let attempts = 0;
+      const maxAttempts = 60; // 60 x 3s = 3 menit maksimal nunggu
+      let job = null;
+      while (attempts < maxAttempts) {
+        await new Promise((resolve) => setTimeout(resolve, 3000));
+        job = await databases.getDocument(DATABASE_ID, SUBTITLE_JOBS_COLLECTION_ID, requestId);
+        if (job.status === 'completed' || job.status === 'failed') break;
+        attempts++;
+      }
+
+      if (!job || job.status !== 'completed') {
+        throw new Error(job?.error_message || 'Transcription timed out or failed.');
+      }
+
+      setSubtitleSegments(JSON.parse(job.segments));
+    } catch (e) {
+      console.error('Failed to generate subtitle:', e);
+      setSubtitleError(e.message || 'Failed to generate subtitle. Please try again.');
+    } finally {
+      setIsUploadingVideo(false);
+      setIsTranscribing(false);
+    }
+  };
+
+  // 💾 Download .srt/.vtt lewat Blob + link sementara
+  const handleDownloadSubtitle = (format) => {
+    if (!subtitleSegments) return;
+    const content = format === 'srt' ? segmentsToSrt(subtitleSegments) : segmentsToVtt(subtitleSegments);
+    const baseName = (subtitleVideoFile?.name || 'subtitle').replace(/\.[^/.]+$/, '');
+    const blob = new Blob([content], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${baseName}.${format}`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
   };
 
   const handleDownloadAudio = () => {
@@ -1242,8 +1384,60 @@ const TtsServer = () => {
              >
                 🎭 Dialogue Mode
              </button>
+             <button 
+                onClick={() => setMode('subtitle')}
+                style={{ padding: '10px', backgroundColor: mode === 'subtitle' ? '#00C2FF' : '#f5f5f5', color: mode === 'subtitle' ? 'white' : 'black', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
+             >
+                🎬 Subtitle Generator
+             </button>
           </div>
 
+          {mode === 'subtitle' ? (
+            <div>
+              <p style={{ color: '#666', fontSize: '14px' }}>
+                Upload a short video (max {MAX_VIDEO_DURATION_SECONDS} seconds), and we'll transcribe the audio and generate a downloadable .srt or .vtt subtitle file.
+              </p>
+
+              <div style={{ marginBottom: '16px' }}>
+                <input type="file" accept="video/*" onChange={handlePickSubtitleVideo} disabled={isUploadingVideo || isTranscribing} />
+              </div>
+
+              {subtitleError && (
+                <div style={{ backgroundColor: '#fee', border: '1px solid #fcc', borderRadius: '6px', padding: '10px', marginBottom: '16px', color: '#c00', fontSize: '13px' }}>
+                  {subtitleError}
+                </div>
+              )}
+
+              <button
+                onClick={handleGenerateSubtitle}
+                disabled={!subtitleVideoFile || isUploadingVideo || isTranscribing}
+                style={{
+                  width: '100%', padding: '12px',
+                  backgroundColor: (isUploadingVideo || isTranscribing || !subtitleVideoFile) ? '#ccc' : '#5B5BF6',
+                  color: '#fff', border: 'none', borderRadius: '8px', fontWeight: 'bold',
+                  cursor: (isUploadingVideo || isTranscribing) ? 'default' : 'pointer',
+                }}
+              >
+                {isUploadingVideo ? 'Uploading video...' : isTranscribing ? 'Transcribing... (this may take a while)' : 'Generate Subtitle'}
+              </button>
+
+              {subtitleSegments && (
+                <div style={{ marginTop: '24px', padding: '16px', backgroundColor: '#f9f9f9', borderRadius: '8px' }}>
+                  <h3 style={{ marginTop: 0 }}>Transcript Preview</h3>
+                  <p style={{ fontSize: '13px', lineHeight: '1.6', color: '#333' }}>{segmentsToPlainText(subtitleSegments)}</p>
+
+                  <div style={{ display: 'flex', gap: '12px', marginTop: '16px' }}>
+                    <button onClick={() => handleDownloadSubtitle('srt')} style={{ flex: 1, padding: '10px', backgroundColor: '#00C2FF', color: '#fff', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer' }}>
+                      ⬇ Download .SRT
+                    </button>
+                    <button onClick={() => handleDownloadSubtitle('vtt')} style={{ flex: 1, padding: '10px', backgroundColor: '#00C2FF', color: '#fff', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer' }}>
+                      ⬇ Download .VTT
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : (
           <form onSubmit={handleGenerateSpeech}>
             {mode === 'single' ? (
               <div>
@@ -1344,6 +1538,7 @@ const TtsServer = () => {
               </small>
             )}
           </form>
+          )}
 
           {/* Area Hasil Audio */}
           {generatedAudio && (
