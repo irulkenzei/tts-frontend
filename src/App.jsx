@@ -1,9 +1,9 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { Client, Functions, Databases, Storage, ID, Query, Account } from 'appwrite';
 import { segmentsToPlainText, segmentsToSrt, segmentsToVtt } from './subtitleUtils';
+import './App.css';
 
-// 1. Inisialisasi Appwrite
-// Ganti dengan Project ID dan Endpoint Anda
+// Konfigurasi Appwrite
 const APPWRITE_ENDPOINT = 'https://fra.cloud.appwrite.io/v1';
 const APPWRITE_PROJECT_ID = '6a3a48a1003d333b0268';
 
@@ -15,46 +15,26 @@ const appwriteFunctions = new Functions(client);
 const databases = new Databases(client);
 const storage = new Storage(client);
 const account = new Account(client);
-const FUNCTION_ID = '6a4bedd10009fe338821'; // Ganti dengan ID fungsi Replicate Anda
+const FUNCTION_ID = '6a4bedd10009fe338821';
 
-// 🗂️ Konfigurasi database & storage untuk fitur Voice Library dan Upload
-// Rekaman -- SESUAIKAN nilai-nilai ini dengan project Appwrite Anda.
-const DATABASE_ID = 'naratorai'; // ganti kalau database ID Anda beda
-const SPEAKERS_COLLECTION_ID = 'speakers'; // collection yang sama dipakai app mobile
-const USER_STATS_COLLECTION_ID = 'user_stats'; // collection quota yang sama dipakai app mobile
-// 🧬 Collection TERPISAH dari `speakers` (yang dipakai app mobile) --
-// khusus nampung voice hasil clone dari web, per-user (filter by user_id).
+// Database & Storage Configuration
+const DATABASE_ID = 'naratorai';
+const SPEAKERS_COLLECTION_ID = 'speakers';
+const USER_STATS_COLLECTION_ID = 'user_stats';
 const WEB_SPEAKERS_COLLECTION_ID = 'web_speakers';
-// 🆕 Collection buat nampung hasil generate dari eksekusi ASYNC -- karena
-// Appwrite nggak pernah nyimpen responseBody eksekusi async, Function nulis
-// hasilnya ke sini, dan kita polling ke sini (bukan ke status eksekusi).
 const JOBS_COLLECTION_ID = 'web_generation_jobs';
-const MAX_FREE_GENERATIONS = 2; // sama persis limit di app mobile
-const MAX_FREE_CLONES = 2; // limit gratis clone voice, sama kayak generate
-// Bucket untuk upload hasil rekaman suara sebagai referensi speaker baru --
-// WAJIB punya permission "Read: Any" di Appwrite Console, karena Replicate
-// perlu bisa fetch URL file ini dari luar (public read, bukan cuma
-// authenticated user Anda sendiri).
+const MAX_FREE_GENERATIONS = 2;
+const MAX_FREE_CLONES = 2;
 const RECORDING_UPLOAD_BUCKET_ID = '6a40a942000c72f7a8f1';
 
-// 🎬 Konstanta buat fitur Subtitle Generator (upload video -> transkripsi
-// -> download .srt/.vtt). GENERATE_SUBTITLE_FUNCTION_ID WAJIB diisi sesuai
-// Function ID yang di-deploy (lihat generate-subtitle/index.js).
 const SUBTITLE_JOBS_COLLECTION_ID = 'subtitle_jobs';
 const GENERATE_SUBTITLE_FUNCTION_ID = '6a50418800361531d89d';
-const MAX_VIDEO_DURATION_SECONDS = 30; // video pendek aja, biar biaya transkripsi murah
+const MAX_VIDEO_DURATION_SECONDS = 30;
 
-// 📄 Konstanta buat fitur Document Converter (EPUB/DOCX/PDF/TXT 2 arah).
-// GENERATE_SUBTITLE_FUNCTION_ID WAJIB diisi sesuai Function ID yang di-deploy.
 const CONVERT_JOBS_COLLECTION_ID = 'convert_jobs';
 const CONVERT_DOCUMENT_FUNCTION_ID = '6a508da3001c54e3a019';
 const SUPPORTED_DOC_FORMATS = ['txt', 'docx', 'pdf', 'epub'];
 
-// 🎭 Deteksi nama speaker unik dari skrip dialog, urutan sesuai kemunculan
-// pertama. Pattern regex ini SENGAJA disamakan persis dengan yang dipakai
-// di predict.py & app mobile, supaya konsisten di semua platform. Nambah
-// speaker baru cukup dengan menulis nama baru di skrip -- otomatis scale
-// ke berapa pun yang terdeteksi, tidak dibatasi ke 2/3 speaker.
 function parseSpeakersFromScript(script) {
   if (!script || typeof script !== 'string') return [];
   const names = [];
@@ -77,22 +57,17 @@ function parseSpeakersFromScript(script) {
 }
 
 const TtsServer = () => {
-  // --- State Management ---
+  // State Management
   const [mode, setMode] = useState('single');
   const [language, setLanguage] = useState('en');
   const [speed, setSpeed] = useState(1.0);
   const [temperature, setTemperature] = useState(0.7);
-
-  // ⚙️ Settings tambahan -- dulu cuma ada di Replicate Playground, sekarang
-  // dipindah semua ke sini (Speed, Temperature, Comma/Period Pause), diakses
-  // lewat modal Settings (ikon gear), bukan lagi tersebar di sidebar.
   const [commaPauseMs, setCommaPauseMs] = useState(300);
   const [periodPauseMs, setPeriodPauseMs] = useState(600);
-  const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [outputFormat, setOutputFormat] = useState('wav');
 
   const [customUrlText, setCustomUrlText] = useState('');
-  const [voiceSource, setVoiceSource] = useState(''); 
+  const [voiceSource, setVoiceSource] = useState('');
 
   const [voiceLibrary, setVoiceLibrary] = useState([]);
   const [selectedLibraryVoiceId, setSelectedLibraryVoiceId] = useState('');
@@ -100,8 +75,7 @@ const TtsServer = () => {
 
   const [isUploadingRecording, setIsUploadingRecording] = useState(false);
   const [isUploadingFile, setIsUploadingFile] = useState(false);
-  
-  // Text Input & Refs untuk UI Baru
+
   const [text, setText] = useState('');
   const [dialogueScript, setDialogueScript] = useState('');
   const textRef = useRef(null);
@@ -137,30 +111,29 @@ const TtsServer = () => {
 
   const [isLiked, setIsLiked] = useState(false);
   const [toastMessage, setToastMessage] = useState(null);
-  const showToast = (message, durationMs = 3500) => {
+  const [toastType, setToastType] = useState('info');
+  
+  const showToast = (message, durationMs = 3500, type = 'info') => {
     setToastMessage(message);
+    setToastType(type);
     setTimeout(() => setToastMessage(null), durationMs);
   };
   const [currentJobId, setCurrentJobId] = useState(null);
 
-  // 🎵 Background music + auto-ducking -- opsional, kalau diisi otomatis
-  // diikutsertakan sebagai parameter tambahan ke Replicate (background_music,
-  // music_volume_db). Lihat predict.py untuk logic ducking-nya (ffmpeg
-  // sidechaincompress). Pola upload-nya sama seperti fitur upload file
-  // lokal (.wav) yang sudah ada.
+  // Background music
   const [backgroundMusicUrl, setBackgroundMusicUrl] = useState(null);
   const [backgroundMusicName, setBackgroundMusicName] = useState(null);
   const [musicVolumeDb, setMusicVolumeDb] = useState(-6);
   const [isUploadingMusic, setIsUploadingMusic] = useState(false);
 
-  // 🎬 Subtitle Generator -- upload video, transkripsi, generate .srt/.vtt
+  // Subtitle Generator
   const [subtitleVideoFile, setSubtitleVideoFile] = useState(null);
   const [isUploadingVideo, setIsUploadingVideo] = useState(false);
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [subtitleSegments, setSubtitleSegments] = useState(null);
   const [subtitleError, setSubtitleError] = useState('');
 
-  // 📄 Document Converter -- EPUB/DOCX/PDF/TXT 2 arah
+  // Document Converter
   const [convertSourceFile, setConvertSourceFile] = useState(null);
   const [convertTargetFormat, setConvertTargetFormat] = useState('txt');
   const [isUploadingDoc, setIsUploadingDoc] = useState(false);
@@ -192,7 +165,7 @@ const TtsServer = () => {
   const [selectedClonedVoiceId, setSelectedClonedVoiceId] = useState('');
   const isCloneLimitReached = cloneCount >= MAX_FREE_CLONES;
 
-  // --- Effects (Diambil utuh dari kode asli Anda) ---
+  // Effects
   useEffect(() => {
     const initUserAndQuota = async () => {
       try {
@@ -273,7 +246,7 @@ const TtsServer = () => {
     fetchVoiceLibrary();
   }, []);
 
-  // --- Handlers ---
+  // Handlers
   const handleSelectLibraryVoice = (e) => {
     const voiceId = e.target.value;
     setSelectedLibraryVoiceId(voiceId);
@@ -315,7 +288,7 @@ const TtsServer = () => {
     return assignment.customUrl || '';
   };
 
-  // --- Logic Perekam Suara ---
+  // Recording logic
   const toggleRecording = async () => {
     if (isRecording) {
       mediaRecorderRef.current.stop();
@@ -336,7 +309,7 @@ const TtsServer = () => {
           const blob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
           setRecordedBlob(blob);
           setRecordedUrl(URL.createObjectURL(blob));
-          stream.getTracks().forEach(track => track.stop()); 
+          stream.getTracks().forEach(track => track.stop());
           clearInterval(recordingTimerRef.current);
         };
 
@@ -357,7 +330,7 @@ const TtsServer = () => {
         }, 1000);
       } catch (err) {
         console.error("Failed to access microphone:", err);
-        alert("Ensure you grant microphone access permission..");
+        showToast("Izinkan akses microphone untuk merekam suara", 3500, 'error');
       }
     }
   };
@@ -378,14 +351,14 @@ const TtsServer = () => {
         file
       );
       const fileUrl = `https://fra.cloud.appwrite.io/v1/storage/buckets/${RECORDING_UPLOAD_BUCKET_ID}/files/${uploadedFile.$id}/view?project=6a3a48a1003d333b0268`;
-      
+
       setCustomUrlText(fileUrl);
       setVoiceSource('custom');
-      setSelectedLibraryVoiceId(''); 
-      alert('The recording was successfully uploaded and immediately used as a voice reference.!');
+      setSelectedLibraryVoiceId('');
+      showToast('Rekaman berhasil diupload dan digunakan sebagai voice reference!', 3500, 'success');
     } catch (err) {
       console.error('Failed to upload recording:', err);
-      alert('Failed to upload recording: ' + err.message);
+      showToast('Gagal upload rekaman: ' + err.message, 3500, 'error');
     } finally {
       setIsUploadingRecording(false);
     }
@@ -393,19 +366,19 @@ const TtsServer = () => {
 
   const handleCloneVoice = async () => {
     if (isCloneLimitReached) {
-      alert('You have reached the free voice clone limit. Please upgrade to continue.');
+      showToast('Anda sudah mencapai limit voice clone gratis. Upgrade ke Pro!', 3500, 'warning');
       return;
     }
     if (!recordedBlob) {
-      alert('Please record your voice first before cloning.');
+      showToast('Silakan rekam suara Anda terlebih dahulu', 3500, 'warning');
       return;
     }
     if (!cloneVoiceName.trim()) {
-      alert('Please enter a name for this voice.');
+      showToast('Berikan nama untuk voice ini', 3500, 'warning');
       return;
     }
     if (!userId) {
-      alert('Could not verify your account. Please reload the page.');
+      showToast('Tidak dapat memverifikasi akun. Silakan refresh halaman', 3500, 'error');
       return;
     }
 
@@ -449,12 +422,13 @@ const TtsServer = () => {
       );
       setMyClonedVoices(response.documents);
 
+      const savedName = cloneVoiceName.trim();
       setCloneVoiceName('');
       discardRecording();
-      alert(`Voice "${cloneVoiceName.trim()}" cloned and saved successfully!`);
+      showToast(`Voice "${savedName}" berhasil disimpan!`, 3500, 'success');
     } catch (err) {
       console.error('Failed to clone voice:', err);
-      alert('Failed to clone voice: ' + err.message);
+      showToast('Gagal menyimpan voice: ' + err.message, 3500, 'error');
     } finally {
       setIsCloningVoice(false);
     }
@@ -478,8 +452,8 @@ const TtsServer = () => {
     if (!file) return;
 
     if (!file.name.toLowerCase().endsWith('.wav')) {
-      alert('Please select a .wav file.');
-      e.target.value = ''; 
+      showToast('Silakan pilih file .wav', 3500, 'warning');
+      e.target.value = '';
       return;
     }
 
@@ -496,23 +470,19 @@ const TtsServer = () => {
       setCustomUrlText(fileUrl);
       setVoiceSource('custom');
       setSelectedLibraryVoiceId('');
-      alert(`"${file.name}" uploaded successfully and is now used as the voice reference!`);
+      showToast(`File "${file.name}" berhasil diupload!`, 3500, 'success');
     } catch (err) {
       console.error('Failed to upload local file:', err);
-      alert('Failed to upload file: ' + err.message);
+      showToast('Gagal upload file: ' + err.message, 3500, 'error');
     } finally {
       setIsUploadingFile(false);
-      e.target.value = ''; 
+      e.target.value = '';
     }
   };
 
   const MAX_MUSIC_DURATION_SECONDS = 30;
-
   const MUSIC_LIBRARY_COLLECTION_ID = 'background_music_library';
 
-  // Hash SHA-256 dari isi file, pakai Web Crypto API bawaan browser --
-  // nggak perlu library tambahan. Dipakai buat deteksi "file yang sama
-  // persis" tanpa perlu bandingin byte-by-byte manual.
   const getFileHash = async (file) => {
     const buffer = await file.arrayBuffer();
     const hashBuffer = await crypto.subtle.digest('SHA-256', buffer);
@@ -520,8 +490,6 @@ const TtsServer = () => {
     return hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
   };
 
-  // Baca durasi file audio SEBELUM upload, pakai elemen <audio> browser --
-  // nggak perlu upload dulu baru ketauan kepanjangan, langsung ketolak di sisi client.
   const getAudioFileDuration = (file) => {
     return new Promise((resolve, reject) => {
       const audioEl = document.createElement('audio');
@@ -538,43 +506,34 @@ const TtsServer = () => {
     });
   };
 
-  // 🎵 Pilih & upload file musik latar dari komputer -- pola upload sama
-  // persis dengan handleLocalFileSelect (file .wav) di atas, cuma bucket
-  // & prefix nama file dibedain biar gampang dikenali di Storage.
   const handlePickBackgroundMusic = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
     setIsUploadingMusic(true);
     try {
-      // ⏱️ Cek durasi dulu SEBELUM upload -- max 30 detik, sesuai request.
-      // ffmpeg sebenarnya bisa loop musik berapa pun panjangnya (lihat
-      // predict.py), tapi limit ini sengaja dipasang biar user nggak upload
-      // file musik full-length yang nggak perlu (buang bandwidth & storage).
       let duration;
       try {
         duration = await getAudioFileDuration(file);
       } catch (durationErr) {
         console.error('Failed to read audio duration:', durationErr);
-        alert('Could not read this audio file. Please try a different file.');
+        showToast('Tidak dapat membaca file audio ini', 3500, 'error');
         setIsUploadingMusic(false);
         e.target.value = '';
         return;
       }
 
       if (duration > MAX_MUSIC_DURATION_SECONDS) {
-        alert(
-          `Background music must be ${MAX_MUSIC_DURATION_SECONDS} seconds or shorter ` +
-          `(yours is ${Math.round(duration)}s). Please trim it first -- it will be looped automatically anyway.`
+        showToast(
+          `Musik latar maksimal ${MAX_MUSIC_DURATION_SECONDS} detik (file Anda ${Math.round(duration)}s). Potong terlebih dahulu.`,
+          3500,
+          'warning'
         );
         setIsUploadingMusic(false);
         e.target.value = '';
         return;
       }
 
-      // 🔍 Cek dulu apakah file ini (isinya, bukan cuma nama) sudah pernah
-      // di-upload sebelumnya (oleh user yang sama) -- kalau iya, REUSE URL
-      // yang sudah ada, jangan upload dobel.
       const fileHash = await getFileHash(file);
       if (userId) {
         try {
@@ -589,12 +548,10 @@ const TtsServer = () => {
             setBackgroundMusicName(doc.file_name);
             setIsUploadingMusic(false);
             e.target.value = '';
-            showToast('This music was already uploaded before -- reusing the existing file instead of uploading again.');
+            showToast('Musik ini sudah pernah diupload sebelumnya - menggunakan file yang ada');
             return;
           }
         } catch (dedupErr) {
-          // Kalau pengecekan dedup gagal (mis. collection belum ada), jangan
-          // blokir upload -- lanjut aja seperti biasa, cuma nggak ke-dedup.
           console.error('Failed to check for duplicate music:', dedupErr);
         }
       }
@@ -609,10 +566,8 @@ const TtsServer = () => {
         renamedFile
       );
 
-      const fileUrl = `https://fra.cloud.appwrite.io/v1/storage/buckets/${RECORDING_UPLOAD_BUCKET_ID}/files/${uploadedFile.$id}/view?project=6a3a48a1003d333b0268`;
+      const fileUrl = `https://fra.cloud.appwrite.io/v1/storage/buckets/${RECORDING_UPLOAD_BUCKET_ID}/files/${uploadedFile.$id}/view?project=${APPWRITE_PROJECT_ID}`;
 
-      // 📝 Catat hash file ini, supaya lain kali upload file yang sama
-      // persis, kita bisa reuse URL ini tanpa upload ulang.
       if (userId) {
         try {
           await databases.createDocument(
@@ -628,9 +583,10 @@ const TtsServer = () => {
 
       setBackgroundMusicUrl(fileUrl);
       setBackgroundMusicName(file.name);
+      showToast('Musik latar berhasil diupload!', 3500, 'success');
     } catch (err) {
       console.error('Failed to upload background music:', err);
-      alert('Failed to upload background music: ' + err.message);
+      showToast('Gagal upload musik: ' + err.message, 3500, 'error');
     } finally {
       setIsUploadingMusic(false);
       e.target.value = '';
@@ -642,12 +598,6 @@ const TtsServer = () => {
     setBackgroundMusicName(null);
   };
 
-  // 🎬 SUBTITLE GENERATOR -- pola upload/polling sama persis dengan
-  // handleGenerateSpeech (async execution + database polling), cuma
-  // Function tujuannya beda (generate-subtitle, bukan Replicate TTS).
-
-  // Baca durasi video pakai elemen <video> browser -- sama pola dengan cek
-  // durasi musik latar (elemen <audio>).
   const getVideoDuration = (file) => {
     return new Promise((resolve, reject) => {
       const videoEl = document.createElement('video');
@@ -673,13 +623,13 @@ const TtsServer = () => {
       duration = await getVideoDuration(file);
     } catch (durationErr) {
       console.error('Failed to read video duration:', durationErr);
-      alert('Could not read this video file. Please try a different file.');
+      showToast('Tidak dapat membaca file video ini', 3500, 'error');
       e.target.value = '';
       return;
     }
 
     if (duration > MAX_VIDEO_DURATION_SECONDS) {
-      alert(`Video must be ${MAX_VIDEO_DURATION_SECONDS} seconds or shorter (yours is ${Math.round(duration)}s). Please trim it first.`);
+      showToast(`Video maksimal ${MAX_VIDEO_DURATION_SECONDS} detik (file Anda ${Math.round(duration)}s)`, 3500, 'warning');
       e.target.value = '';
       return;
     }
@@ -696,7 +646,6 @@ const TtsServer = () => {
     setIsUploadingVideo(true);
 
     try {
-      // 1. Upload video ke Appwrite Storage
       const renamedFile = new File([subtitleVideoFile], `web-video-${Date.now()}-${subtitleVideoFile.name}`, {
         type: subtitleVideoFile.type,
       });
@@ -706,7 +655,6 @@ const TtsServer = () => {
       setIsUploadingVideo(false);
       setIsTranscribing(true);
 
-      // 2. Bikin dokumen job (status pending), requestId = document ID
       const requestId = ID.unique();
       await databases.createDocument(DATABASE_ID, SUBTITLE_JOBS_COLLECTION_ID, requestId, {
         user_id: userId,
@@ -714,8 +662,6 @@ const TtsServer = () => {
         video_url: videoUrl,
       });
 
-      // 3. Panggil Function ASYNC lewat REST langsung (sama pola dengan
-      // pemanggilan FUNCTION_ID buat TTS di handleGenerateSpeech)
       await fetch(`${APPWRITE_ENDPOINT}/functions/${GENERATE_SUBTITLE_FUNCTION_ID}/executions`, {
         method: 'POST',
         headers: {
@@ -728,9 +674,8 @@ const TtsServer = () => {
         }),
       });
 
-      // 4. Polling dokumen job sampai status berubah
       let attempts = 0;
-      const maxAttempts = 60; // 60 x 3s = 3 menit maksimal nunggu
+      const maxAttempts = 60;
       let job = null;
       while (attempts < maxAttempts) {
         await new Promise((resolve) => setTimeout(resolve, 3000));
@@ -740,20 +685,20 @@ const TtsServer = () => {
       }
 
       if (!job || job.status !== 'completed') {
-        throw new Error(job?.error_message || 'Transcription timed out or failed.');
+        throw new Error(job?.error_message || 'Transkripsi timeout atau gagal.');
       }
 
       setSubtitleSegments(JSON.parse(job.segments));
+      showToast('Subtitle berhasil dibuat!', 3500, 'success');
     } catch (e) {
       console.error('Failed to generate subtitle:', e);
-      setSubtitleError(e.message || 'Failed to generate subtitle. Please try again.');
+      setSubtitleError(e.message || 'Gagal membuat subtitle. Coba lagi.');
     } finally {
       setIsUploadingVideo(false);
       setIsTranscribing(false);
     }
   };
 
-  // 💾 Download .srt/.vtt lewat Blob + link sementara
   const handleDownloadSubtitle = (format) => {
     if (!subtitleSegments) return;
     const content = format === 'srt' ? segmentsToSrt(subtitleSegments) : segmentsToVtt(subtitleSegments);
@@ -775,9 +720,6 @@ const TtsServer = () => {
     window.open(downloadUrl, '_blank');
   };
 
-  // 📄 DOCUMENT CONVERTER -- pola upload/polling sama persis dengan
-  // handleGenerateSubtitle, cuma Function tujuannya beda (convert-document).
-
   const detectFormatFromFileName = (fileName) => {
     const ext = fileName.split('.').pop().toLowerCase();
     return SUPPORTED_DOC_FORMATS.includes(ext) ? ext : null;
@@ -789,7 +731,7 @@ const TtsServer = () => {
 
     const format = detectFormatFromFileName(file.name);
     if (!format) {
-      alert(`Unsupported file type. Please upload one of: ${SUPPORTED_DOC_FORMATS.join(', ')}`);
+      showToast(`Format tidak didukung. Silakan upload: ${SUPPORTED_DOC_FORMATS.join(', ')}`, 3500, 'warning');
       e.target.value = '';
       return;
     }
@@ -809,9 +751,8 @@ const TtsServer = () => {
 
     try {
       const sourceFormat = detectFormatFromFileName(convertSourceFile.name);
-      if (!sourceFormat) throw new Error('Could not detect source file format.');
+      if (!sourceFormat) throw new Error('Tidak dapat mendeteksi format file.');
 
-      // 1. Upload dokumen sumber ke Storage
       const renamedFile = new File([convertSourceFile], `web-doc-${Date.now()}-${convertSourceFile.name}`, {
         type: convertSourceFile.type,
       });
@@ -821,7 +762,6 @@ const TtsServer = () => {
       setIsUploadingDoc(false);
       setIsConverting(true);
 
-      // 2. Bikin dokumen job (status pending)
       const requestId = ID.unique();
       const title = convertSourceFile.name.replace(/\.[^/.]+$/, '');
       await databases.createDocument(DATABASE_ID, CONVERT_JOBS_COLLECTION_ID, requestId, {
@@ -829,7 +769,6 @@ const TtsServer = () => {
         source_url: sourceUrl,
       });
 
-      // 3. Panggil Function ASYNC
       await fetch(`${APPWRITE_ENDPOINT}/functions/${CONVERT_DOCUMENT_FUNCTION_ID}/executions`, {
         method: 'POST',
         headers: {
@@ -842,9 +781,8 @@ const TtsServer = () => {
         }),
       });
 
-      // 4. Polling dokumen job
       let attempts = 0;
-      const maxAttempts = 40; // 40 x 3s = 2 menit maksimal nunggu
+      const maxAttempts = 40;
       let job = null;
       while (attempts < maxAttempts) {
         await new Promise((resolve) => setTimeout(resolve, 3000));
@@ -854,14 +792,15 @@ const TtsServer = () => {
       }
 
       if (!job || job.status !== 'completed') {
-        throw new Error(job?.error_message || 'Conversion timed out or failed.');
+        throw new Error(job?.error_message || 'Konversi timeout atau gagal.');
       }
 
       setConvertResultUrl(job.output_url);
       setConvertPreviewText(job.extracted_text_preview || '');
+      showToast('Dokumen berhasil dikonversi!', 3500, 'success');
     } catch (e) {
       console.error('Failed to convert document:', e);
-      setConvertError(e.message || 'Failed to convert document. Please try again.');
+      setConvertError(e.message || 'Gagal mengkonversi dokumen. Coba lagi.');
     } finally {
       setIsUploadingDoc(false);
       setIsConverting(false);
@@ -877,7 +816,7 @@ const TtsServer = () => {
   const handleToggleLike = async () => {
     if (!currentJobId) return;
     const newLikedState = !isLiked;
-    setIsLiked(newLikedState); 
+    setIsLiked(newLikedState);
     try {
       await databases.updateDocument(
         DATABASE_ID,
@@ -887,8 +826,8 @@ const TtsServer = () => {
       );
     } catch (err) {
       console.error('Failed to update like status:', err);
-      setIsLiked(!newLikedState); 
-      alert('Failed to save like status: ' + err.message);
+      setIsLiked(!newLikedState);
+      showToast('Gagal menyimpan status like: ' + err.message, 3500, 'error');
     }
   };
 
@@ -913,13 +852,13 @@ const TtsServer = () => {
           title: 'NarratorAI Voice Over',
         });
       } else {
-        showToast("Direct sharing isn't available on this browser -- here's your file to download instead.");
+        showToast("Browser ini tidak mendukung share langsung - download file untuk dibagikan");
         handleDownloadAudio();
       }
     } catch (err) {
       if (err.name === 'AbortError') return;
       console.error('Failed to share audio:', err);
-      showToast("Direct sharing isn't available on this browser yet -- here's your file to download instead.");
+      showToast("Browser ini tidak mendukung share langsung");
       handleDownloadAudio();
     }
   };
@@ -927,20 +866,29 @@ const TtsServer = () => {
   const handleGenerateSpeech = async (e) => {
     e.preventDefault();
     if (isLimitReached) {
-      return alert('You have reached the free generation limit. Please upgrade to continue.');
+      showToast('Anda sudah mencapai limit generate gratis. Upgrade ke Pro!', 3500, 'warning');
+      return;
     }
-    if (mode === 'single' && !text) return alert("Text cannot be empty!");
-    if (mode === 'dialogue' && !dialogueScript) return alert("Dialogue script cannot be empty!");
+    if (mode === 'single' && !text) {
+      showToast("Teks tidak boleh kosong!", 3500, 'warning');
+      return;
+    }
+    if (mode === 'dialogue' && !dialogueScript) {
+      showToast("Script dialogue tidak boleh kosong!", 3500, 'warning');
+      return;
+    }
 
     let payload;
 
     if (mode === 'dialogue') {
       if (detectedSpeakerNames.length === 0) {
-        return alert('No speakers detected. Use the format [Name]: text... for each line.');
+        showToast('Tidak ada speaker terdeteksi. Gunakan format [Nama]: teks...', 3500, 'warning');
+        return;
       }
       const missing = detectedSpeakerNames.filter((name) => !getSpeakerVoiceUrl(name));
       if (missing.length > 0) {
-        return alert(`Please assign a voice for: ${missing.join(', ')}`);
+        showToast(`Tetapkan voice untuk: ${missing.join(', ')}`, 3500, 'warning');
+        return;
       }
 
       const speakerMap = {};
@@ -958,8 +906,6 @@ const TtsServer = () => {
         output_format: outputFormat,
         comma_pause_ms: commaPauseMs,
         period_pause_ms: periodPauseMs,
-        // 🎵 Opsional -- kalau backgroundMusicUrl null, field ini nggak
-        // ngaruh apa-apa (Function/predict.py cuma proses ducking kalau ada)
         background_music: backgroundMusicUrl || undefined,
         music_volume_db: musicVolumeDb,
       };
@@ -967,7 +913,8 @@ const TtsServer = () => {
       const finalSpeakerWavUrl = voiceSource === 'library' ? getLibraryVoiceUrl() : customUrlText;
 
       if (!finalSpeakerWavUrl) {
-        return alert('Please select a voice from the library, enter a custom URL, or record your voice first.');
+        showToast('Pilih voice dari library, masukkan URL custom, atau rekam suara Anda terlebih dahulu.', 3500, 'warning');
+        return;
       }
 
       payload = {
@@ -1022,16 +969,16 @@ const TtsServer = () => {
 
       if (!createExecRes.ok) {
         const errBody = await createExecRes.json().catch(() => ({}));
-        throw new Error(errBody.message || `Failed to start execution (status ${createExecRes.status})`);
+        throw new Error(errBody.message || `Gagal memulai eksekusi (status ${createExecRes.status})`);
       }
 
       let jobDoc = null;
-      const maxWaitMs = 5 * 60 * 1000; 
+      const maxWaitMs = 5 * 60 * 1000;
       const pollStart = Date.now();
 
       while (!jobDoc || jobDoc.status === 'pending') {
         if (Date.now() - pollStart > maxWaitMs) {
-          throw new Error('Generation timed out. Please check Appwrite Console logs.');
+          throw new Error('Generate timeout. Cek Appwrite Console logs.');
         }
         await new Promise((resolve) => setTimeout(resolve, 3000));
         try {
@@ -1042,7 +989,7 @@ const TtsServer = () => {
       }
 
       if (jobDoc.status === 'failed') {
-        throw new Error(jobDoc.error_message || 'Function execution failed. Check Appwrite Console logs for details.');
+        throw new Error(jobDoc.error_message || 'Eksekusi function gagal. Cek Appwrite Console logs.');
       }
 
       const data = { success: true, audioUrl: jobDoc.audio_url, fileName: jobDoc.file_name };
@@ -1051,6 +998,7 @@ const TtsServer = () => {
         setGeneratedAudio(data.audioUrl);
         setGeneratedFileName(data.fileName || null);
         setCurrentJobId(requestId);
+        showToast('Audio berhasil dibuat!', 3500, 'success');
 
         try {
           const downloadUrl = data.audioUrl.replace('/view?', '/download?');
@@ -1058,7 +1006,7 @@ const TtsServer = () => {
           const blob = await blobResponse.blob();
           setGeneratedAudioBlob(blob);
         } catch (blobErr) {
-          console.error('Failed to pre-fetch audio blob for sharing:', blobErr);
+          console.error('Failed to pre-fetch audio blob:', blobErr);
           setGeneratedAudioBlob(null);
         }
 
@@ -1077,11 +1025,11 @@ const TtsServer = () => {
           }
         }
       } else {
-        throw new Error(data.error || "Failed to generate audio from Source.");
+        throw new Error(data.error || "Gagal membuat audio.");
       }
     } catch (err) {
       console.error(err);
-      alert("Error: " + err.message);
+      showToast('Error: ' + err.message, 3500, 'error');
     } finally {
       clearInterval(timerIntervalRef.current);
       if (timerStartRef.current) {
@@ -1091,9 +1039,8 @@ const TtsServer = () => {
     }
   };
 
-  // --- Fungsi Clear & Pause UI Baru ---
   const handleClearText = (e) => {
-    e.preventDefault(); 
+    e.preventDefault();
     if (mode === 'single') {
       setText('');
       setTimeout(() => textRef.current?.focus(), 0);
@@ -1114,7 +1061,7 @@ const TtsServer = () => {
     const setTargetText = isSingle ? setText : setDialogueScript;
 
     if (currentText.length + pauseTag.length > MAX_CHARS) {
-      alert("Kapasitas teks tidak cukup untuk menambahkan pause!");
+      showToast("Kapasitas teks tidak cukup untuk pause!", 3500, 'warning');
       e.target.value = "";
       return;
     }
@@ -1125,7 +1072,7 @@ const TtsServer = () => {
 
       const newText = currentText.substring(0, startPos) + pauseTag + currentText.substring(endPos, currentText.length);
       setTargetText(newText);
-      e.target.value = ""; 
+      e.target.value = "";
 
       setTimeout(() => {
         currentRef.focus();
@@ -1136,17 +1083,15 @@ const TtsServer = () => {
   };
 
   const renderTextareaHeader = (currentTextLength) => (
-    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px', marginTop: '10px' }}>
-      <span style={{ fontSize: '13px', background: '#f3f4f6', padding: '6px 14px', borderRadius: '20px', border: '1px solid #e5e7eb' }}>
-        {currentTextLength} / {MAX_CHARS}
-      </span>
-      <div style={{ display: 'flex', gap: '10px' }}>
+    <div className="textarea-header">
+      <span className="char-count">{currentTextLength} / {MAX_CHARS}</span>
+      <div className="button-group">
         <select 
           onChange={handleInsertPause} 
           defaultValue=""
-          style={{ padding: '6px 14px', borderRadius: '20px', border: '1px solid #d1d5db', cursor: 'pointer', background: 'white' }}
+          className="pause-select"
         >
-          <option value="" disabled>|| Pauses</option>
+          <option value="" disabled>⏸ Pause</option>
           <option value="0.5">0.5s</option>
           <option value="1">1s</option>
           <option value="2">2s</option>
@@ -1157,592 +1102,428 @@ const TtsServer = () => {
         <button 
           type="button" 
           onClick={handleClearText}
-          style={{ padding: '6px 14px', borderRadius: '20px', border: '1px solid #d1d5db', background: 'white', cursor: 'pointer' }}
+          className="clear-btn"
         >
-          Clear Text
+          🗑️ Clear
         </button>
       </div>
     </div>
   );
 
-  // --- UI Render ---
   return (
-    <div style={{ fontFamily: 'sans-serif', maxWidth: '1000px', margin: '0 auto', padding: '20px' }}>
+    <div className="app-container">
       {toastMessage && (
-        <div style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', backgroundColor: 'rgba(20, 20, 20, 0.95)', color: 'white', padding: '20px 28px', borderRadius: '10px', maxWidth: '400px', textAlign: 'center', fontSize: '15px', lineHeight: '1.5', zIndex: 9999, boxShadow: '0 8px 24px rgba(0,0,0,0.35)' }}>
+        <div className={`toast toast-${toastType}`}>
           {toastMessage}
         </div>
       )}
 
-      {/* ⚙️ Modal Settings -- Speed, Temperature, Comma/Period Pause.
-          Dulu tersebar di sidebar (Speed/Temp) dan cuma ada di Replicate
-          Playground (Comma/Period Pause) -- sekarang semua terkonsentrasi
-          di sini. */}
-      {showSettingsModal && (
-        <div
-          style={{
-            position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-            backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 9998,
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-          }}
-          onClick={() => setShowSettingsModal(false)}
-        >
-          <div
-            style={{
-              backgroundColor: 'white', borderRadius: '10px', padding: '24px',
-              width: '90%', maxWidth: '420px', maxHeight: '80vh', overflowY: 'auto',
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-              <h2 style={{ margin: 0 }}>⚙️ Voice Settings</h2>
-              <button
-                onClick={() => setShowSettingsModal(false)}
-                style={{ background: 'none', border: 'none', fontSize: '20px', cursor: 'pointer' }}
-              >
-                ✕
-              </button>
-            </div>
-
-            <div style={{ marginBottom: '18px' }}>
-              <label>⚡ Speed: {speed}</label>
-              <input type="range" min="0.5" max="2.0" step="0.05" value={speed} onChange={(e) => setSpeed(e.target.value)} style={{ width: '100%' }}/>
-              <small style={{ color: '#666' }}>0.5 (slow) -- 2.0 (fast)</small>
-            </div>
-
-            <div style={{ marginBottom: '18px' }}>
-              <label>🎭 Expressiveness (Temperature): {temperature}</label>
-              <input type="range" min="0.1" max="1.0" step="0.05" value={temperature} onChange={(e) => setTemperature(e.target.value)} style={{ width: '100%' }}/>
-              <small style={{ color: '#666' }}>0.1 (stable/monotone) -- 1.0 (expressive/varied)</small>
-            </div>
-
-            <div style={{ marginBottom: '18px' }}>
-              <label>⏸️ Comma Pause: {commaPauseMs}ms</label>
-              <input type="range" min="0" max="1500" step="50" value={commaPauseMs} onChange={(e) => setCommaPauseMs(parseInt(e.target.value, 10))} style={{ width: '100%' }}/>
-              <small style={{ color: '#666' }}>Pause duration after a comma</small>
-            </div>
-
-            <div style={{ marginBottom: '8px' }}>
-              <label>⏸️ Period Pause: {periodPauseMs}ms</label>
-              <input type="range" min="0" max="5000" step="50" value={periodPauseMs} onChange={(e) => setPeriodPauseMs(parseInt(e.target.value, 10))} style={{ width: '100%' }}/>
-              <small style={{ color: '#666' }}>Pause duration after a period</small>
-            </div>
-
-            <button
-              onClick={() => setShowSettingsModal(false)}
-              style={{
-                width: '100%', marginTop: '16px', padding: '10px',
-                backgroundColor: '#28a745', color: 'white', border: 'none',
-                borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold',
-              }}
-            >
-              Done
-            </button>
-          </div>
+      <header className="app-header">
+        <div className="header-content">
+          <h1 className="app-title">🎙️ NarratorAI</h1>
+          <p className="app-subtitle">Text-to-Speech dengan AI yang Powerful</p>
         </div>
-      )}
+      </header>
 
-      <h1>🎙️ Narator AI</h1>
-      
-      <div style={{ display: 'flex', gap: '30px', marginTop: '20px' }}>
-        
-        {/* SIDEBAR */}
-        <div style={{ flex: '1', backgroundColor: '#f5f5f5', padding: '20px', borderRadius: '8px' }}>
-          <h2>🗣️ Selection:</h2>
-          
-          <div style={{ marginBottom: '15px' }}>
-            <label>Language:</label><br/>
-            <select value={language} onChange={(e) => setLanguage(e.target.value)} style={{ width: '100%', padding: '8px' }}>
-                <option value="en">English</option>
-                <option value="es">Spanish</option>
-                <option value="fr">French</option>
-                <option value="de">German</option>
-                <option value="it">Italian</option>
-                <option value="pt">Portuguese</option>
-                <option value="pl">Polish</option>
-                <option value="tr">Turkish</option>
-                <option value="ru">Russian</option>
-                <option value="nl">Dutch</option>
-                <option value="cs">Czech</option>
-                <option value="ar">Arabic</option>
-                <option value="zh-cn">Chinese</option>
-                <option value="ja">Japanese</option>
-                <option value="hu">Hungarian</option>
-                <option value="ko">Korean</option>
-                <option value="hi">Hindi</option> 
-            </select>
-          </div>
-
-          <hr style={{ margin: '20px 0' }} />
-
-          <div style={{ marginBottom: '15px' }}>
-            <label>🎵 Select Voice from Library:</label><br/>
-            <select
-              value={selectedLibraryVoiceId}
-              onChange={handleSelectLibraryVoice}
-              disabled={loadingLibrary}
-              style={{ width: '100%', padding: '8px' }}
-            >
-              <option value="">
-                {loadingLibrary ? '-- Loading voices... --' : '-- Select a voice from library --'}
-              </option>
-              {voiceLibrary.map((voice) => (
-                <option key={voice.$id} value={voice.$id}>
-                  {voice.name || voice.label || voice.$id}
-                </option>
-              ))}
-            </select>
-            <small>Choose a saved voice from your library.</small>
-          </div>
-
-          <div style={{ textAlign: 'center', color: '#999', margin: '10px 0' }}>OR</div>
-
-          <div style={{ marginBottom: '15px' }}>
-            <label>🔗 Custom Speaker Audio URL (Voice Clone):</label>
-            <input 
-              type="text" 
-              value={customUrlText} 
-              onChange={(e) => {
-                setCustomUrlText(e.target.value);
-                setVoiceSource('custom');
-              }}
-              placeholder="https://example.com/voice.wav or /path/to/file.wav" 
-              style={{ width: '100%', padding: '8px', boxSizing: 'border-box' }}
-            />
-            <small>Supports .WAV only.</small>
-          </div>
-
-          <div style={{ marginBottom: '15px' }}>
-            <label>📁 Or Select File from Computer:</label><br/>
-            <input
-              type="file"
-              accept=".wav,audio/wav"
-              onChange={handleLocalFileSelect}
-              disabled={isUploadingFile}
-              style={{ width: '100%', padding: '8px', backgroundColor: 'white', border: '1px solid #ccc', borderRadius: '4px' }}
-            />
-            {isUploadingFile && <small>⏳ Uploading file...</small>}
-            <br/>
-            <small>Picks a .wav file from your computer, uploads it automatically, and uses it as the voice reference.</small>
-          </div>
-
-          <div style={{ marginBottom: '15px' }}>
-             <label>🎙️ Record Your Voice:</label><br/>
-             <button onClick={toggleRecording} style={{ padding: '8px', backgroundColor: isRecording ? '#d9363e' : '#e0e0e0', color: isRecording ? 'white' : 'black' }}>
-                {isRecording ? "⏹️ Stop Recording" : "⏺️ Start Recording"}
-             </button>
-             {isRecording && (
-               <span style={{ marginLeft: '10px', fontWeight: 'bold', color: recordingSeconds >= MAX_RECORDING_SECONDS - 5 ? '#d9363e' : '#333' }}>
-                 {String(Math.floor(recordingSeconds / 60)).padStart(2, '0')}:{String(recordingSeconds % 60).padStart(2, '0')} / 00:{MAX_RECORDING_SECONDS}
-               </span>
-             )}
-             <br/>
-             <small>Maximum {MAX_RECORDING_SECONDS} seconds per recording.</small>
-             
-             {recordedUrl && (
-               <div style={{ marginTop: '10px' }}>
-                 <audio src={recordedUrl} controls style={{ width: '100%' }} />
-                 <div style={{ display: 'flex', gap: '10px', marginTop: '5px' }}>
-                   <button onClick={useRecordingAsReference} disabled={isUploadingRecording}>
-                     {isUploadingRecording ? '⏳ Uploading...' : '✅ Use Reference'}
-                   </button>
-                   <button onClick={discardRecording}>🗑️ Discard</button>
-                 </div>
-
-                 <div style={{ marginTop: '12px', padding: '10px', backgroundColor: '#fff3e0', borderRadius: '6px', border: '1px solid #ffcc80' }}>
-                   <label style={{ fontWeight: 'bold', fontSize: '13px' }}>🧬 Or Save as New Voice (Clone):</label>
-                   <input
-                     type="text"
-                     value={cloneVoiceName}
-                     onChange={(e) => setCloneVoiceName(e.target.value)}
-                     placeholder="Voice name (e.g. My Voice)"
-                     disabled={isCloneLimitReached}
-                     style={{ width: '100%', padding: '6px', marginTop: '6px', boxSizing: 'border-box' }}
-                   />
-                   <button
-                     onClick={handleCloneVoice}
-                     disabled={isCloningVoice || isCloneLimitReached}
-                     style={{ width: '100%', marginTop: '6px', padding: '8px', backgroundColor: isCloneLimitReached ? '#9D4EDD' : '#fb8c00', color: 'white', border: 'none', borderRadius: '4px', cursor: isCloningVoice || isCloneLimitReached ? 'not-allowed' : 'pointer', fontWeight: 'bold' }}
-                   >
-                     {isCloningVoice ? '⏳ Cloning...' : isCloneLimitReached ? '⭐ Upgrade to Pro' : '🧬 Clone & Save Voice'}
-                   </button>
-                   {!isCloneLimitReached && (
-                     <small style={{ display: 'block', marginTop: '4px', color: '#666' }}>
-                       {cloneCount} / {MAX_FREE_CLONES} free clones used
-                     </small>
-                   )}
-                 </div>
-               </div>
-             )}
-          </div>
-
-          {myClonedVoices.length > 0 && (
-            <div style={{ marginBottom: '15px' }}>
-              <label>🧬 My Cloned Voices:</label><br/>
-              <select
-                value={selectedClonedVoiceId}
-                onChange={handleSelectClonedVoice}
-                style={{ width: '100%', padding: '8px' }}
-              >
-                <option value="">-- Select one of your cloned voices --</option>
-                {myClonedVoices.map((voice) => (
-                  <option key={voice.$id} value={voice.$id}>
-                    {voice.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
-
-          <hr style={{ margin: '20px 0' }} />
-
-          {/* ⚙️ Speed, Temperature, Comma/Period Pause sekarang di modal
-              Settings (tombol gear), tidak lagi di sidebar. */}
-          <button
-            onClick={() => setShowSettingsModal(true)}
-            style={{
-              width: '100%',
-              padding: '10px',
-              marginBottom: '15px',
-              backgroundColor: '#f5f5f5',
-              border: '1px solid #ccc',
-              borderRadius: '6px',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: '8px',
-              fontSize: '14px',
-              fontWeight: 'bold',
-            }}
+      <main className="app-main">
+        <nav className="mode-nav">
+          <button 
+            onClick={() => setMode('single')}
+            className={`mode-btn ${mode === 'single' ? 'active' : ''}`}
           >
-            ⚙️ Voice Settings
+            <span className="mode-icon">🎙️</span>
+            <span className="mode-text">Single Voice</span>
           </button>
+          <button 
+            onClick={() => setMode('dialogue')}
+            className={`mode-btn ${mode === 'dialogue' ? 'active' : ''}`}
+          >
+            <span className="mode-icon">🎭</span>
+            <span className="mode-text">Dialogue</span>
+          </button>
+          <button 
+            onClick={() => setMode('subtitle')}
+            className={`mode-btn ${mode === 'subtitle' ? 'active' : ''}`}
+          >
+            <span className="mode-icon">🎬</span>
+            <span className="mode-text">Subtitle</span>
+          </button>
+          <button 
+            onClick={() => setMode('convert')}
+            className={`mode-btn ${mode === 'convert' ? 'active' : ''}`}
+          >
+            <span className="mode-icon">📄</span>
+            <span className="mode-text">Document</span>
+          </button>
+        </nav>
 
-          {/* 🎵 Background Music + Auto-Ducking */}
-          <div style={{ marginBottom: '15px', padding: '10px', backgroundColor: '#fff3e0', borderRadius: '6px', border: '1px solid #ffcc80' }}>
-            <label style={{ fontWeight: 'bold' }}>🎵 Background Music (optional, max 30s):</label>
-            {backgroundMusicName ? (
-              <div style={{ marginTop: '8px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <span style={{ fontSize: '13px' }} title={backgroundMusicName}>
-                  🎶 {backgroundMusicName.length > 28 ? backgroundMusicName.substring(0, 28) + '...' : backgroundMusicName}
-                </span>
-                <button
-                  onClick={handleRemoveBackgroundMusic}
-                  style={{ padding: '4px 8px', backgroundColor: '#e0e0e0', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '12px' }}
+        <div className="content-wrapper">
+          <aside className="settings-sidebar">
+            <div className="card settings-card">
+              <h3 className="card-title">⚙️ Pengaturan Voice</h3>
+              
+              <div className="setting-group">
+                <label>🌐 Bahasa</label>
+                <select value={language} onChange={(e) => setLanguage(e.target.value)} className="form-select">
+                  <option value="en">English</option>
+                  <option value="es">Spanish</option>
+                  <option value="fr">French</option>
+                  <option value="de">German</option>
+                  <option value="it">Italian</option>
+                  <option value="pt">Portuguese</option>
+                  <option value="pl">Polish</option>
+                  <option value="tr">Turkish</option>
+                  <option value="ru">Russian</option>
+                  <option value="nl">Dutch</option>
+                  <option value="cs">Czech</option>
+                  <option value="ar">Arabic</option>
+                  <option value="zh-cn">Chinese</option>
+                  <option value="ja">Japanese</option>
+                  <option value="hu">Hungarian</option>
+                  <option value="ko">Korean</option>
+                  <option value="hi">Hindi</option>
+                </select>
+              </div>
+
+              <div className="setting-group">
+                <label>⚡ Kecepatan: <strong>{speed}</strong></label>
+                <input type="range" min="0.5" max="2.0" step="0.05" value={speed} onChange={(e) => setSpeed(e.target.value)} className="form-range"/>
+                <small>0.5 (lambat) — 2.0 (cepat)</small>
+              </div>
+
+              <div className="setting-group">
+                <label>🎭 Ekspresi: <strong>{temperature}</strong></label>
+                <input type="range" min="0.1" max="1.0" step="0.05" value={temperature} onChange={(e) => setTemperature(e.target.value)} className="form-range"/>
+                <small>0.1 (stabil) — 1.0 (ekspresif)</small>
+              </div>
+
+              <div className="setting-group">
+                <label>⏸️ Jeda Koma: <strong>{commaPauseMs}ms</strong></label>
+                <input type="range" min="0" max="1500" step="50" value={commaPauseMs} onChange={(e) => setCommaPauseMs(parseInt(e.target.value, 10))} className="form-range"/>
+              </div>
+
+              <div className="setting-group">
+                <label>⏸️ Jeda Titik: <strong>{periodPauseMs}ms</strong></label>
+                <input type="range" min="0" max="5000" step="50" value={periodPauseMs} onChange={(e) => setPeriodPauseMs(parseInt(e.target.value, 10))} className="form-range"/>
+              </div>
+
+              <div className="setting-group">
+                <label>💾 Format Output</label>
+                <select value={outputFormat} onChange={(e) => setOutputFormat(e.target.value)} className="form-select">
+                  <option value="wav">WAV</option>
+                  <option value="mp3">MP3</option>
+                  <option value="ogg">OGG</option>
+                  <option value="flac">FLAC</option>
+                  <option value="m4a">M4A</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="card">
+              <h3 className="card-title">🎵 Pilih Voice</h3>
+
+              <div className="setting-group">
+                <label>📚 Voice Library</label>
+                <select
+                  value={selectedLibraryVoiceId}
+                  onChange={handleSelectLibraryVoice}
+                  disabled={loadingLibrary}
+                  className="form-select"
                 >
-                  ✕ Remove
-                </button>
+                  <option value="">
+                    {loadingLibrary ? 'Loading...' : 'Pilih voice'}
+                  </option>
+                  {voiceLibrary.map((voice) => (
+                    <option key={voice.$id} value={voice.$id}>
+                      {voice.name || voice.label || voice.$id}
+                    </option>
+                  ))}
+                </select>
               </div>
-            ) : (
-              <input
-                type="file"
-                accept="audio/*"
-                onChange={handlePickBackgroundMusic}
-                disabled={isUploadingMusic}
-                style={{ width: '100%', padding: '6px', marginTop: '6px', backgroundColor: 'white', border: '1px solid #ccc', borderRadius: '4px' }}
-              />
-            )}
-            {isUploadingMusic && <small>⏳ Uploading music...</small>}
 
-            {/* 🔊 Player buat preview musik latar yang dipilih/di-upload */}
-            {backgroundMusicUrl && (
-              <audio src={backgroundMusicUrl} controls style={{ width: '100%', marginTop: '8px', height: '32px' }} />
-            )}
+              <div className="divider">atau</div>
 
-            {backgroundMusicUrl && (
-              <>
-                <small style={{ display: 'block', marginTop: '8px', color: '#666' }}>
-                  Music automatically ducks (turns down) whenever the narration is speaking, and comes back up during silence.
-                </small>
-                <label style={{ display: 'block', marginTop: '6px', fontSize: '13px' }}>
-                  Music Volume: {musicVolumeDb} dB
-                </label>
-                <input
-                  type="range"
-                  min="-30"
-                  max="0"
-                  step="1"
-                  value={musicVolumeDb}
-                  onChange={(e) => setMusicVolumeDb(parseInt(e.target.value, 10))}
-                  style={{ width: '100%' }}
+              <div className="setting-group">
+                <label>🔗 Custom URL</label>
+                <input 
+                  type="text" 
+                  value={customUrlText} 
+                  onChange={(e) => {
+                    setCustomUrlText(e.target.value);
+                    setVoiceSource('custom');
+                  }}
+                  placeholder="https://example.com/voice.wav" 
+                  className="form-input"
                 />
-              </>
-            )}
-          </div>
-
-          <div>
-            <label>💾 Format:</label>
-            <select value={outputFormat} onChange={(e) => setOutputFormat(e.target.value)} style={{ width: '100%', padding: '8px' }}>
-              <option value="wav">WAV</option>
-              <option value="mp3">MP3</option>
-              <option value="ogg">OGG</option>
-              <option value="flac">FLAC</option>
-              <option value="m4a">M4A</option>
-            </select>
-          </div>
-        </div>
-
-        {/* MAIN CONTENT */}
-        <div style={{ flex: '2' }}>
-          <div style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}>
-             <button 
-                onClick={() => setMode('single')}
-                style={{ padding: '10px', backgroundColor: mode === 'single' ? '#00C2FF' : '#f5f5f5', color: mode === 'single' ? 'white' : 'black', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
-             >
-                🎙️ Single Voice
-             </button>
-             <button 
-                onClick={() => setMode('dialogue')}
-                style={{ padding: '10px', backgroundColor: mode === 'dialogue' ? '#00C2FF' : '#f5f5f5', color: mode === 'dialogue' ? 'white' : 'black', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
-             >
-                🎭 Dialogue Mode
-             </button>
-             <button 
-                onClick={() => setMode('subtitle')}
-                style={{ padding: '10px', backgroundColor: mode === 'subtitle' ? '#00C2FF' : '#f5f5f5', color: mode === 'subtitle' ? 'white' : 'black', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
-             >
-                🎬 Subtitle Generator
-             </button>
-             <button 
-                onClick={() => setMode('convert')}
-                style={{ padding: '10px', backgroundColor: mode === 'convert' ? '#00C2FF' : '#f5f5f5', color: mode === 'convert' ? 'white' : 'black', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
-             >
-                📄 Document Converter
-             </button>
-          </div>
-
-          {mode === 'convert' ? (
-            <div>
-              <p style={{ color: '#666', fontSize: '14px' }}>
-                Upload a document (.epub, .docx, .pdf, or .txt), pick a target format, and we'll convert it. Note: this preserves text content but not complex formatting/images.
-              </p>
-
-              <div style={{ marginBottom: '16px' }}>
-                <input type="file" accept=".epub,.docx,.pdf,.txt" onChange={handlePickDocument} disabled={isUploadingDoc || isConverting} />
               </div>
 
-              {convertSourceFile && (
-                <div style={{ marginBottom: '16px' }}>
-                  <label style={{ fontWeight: 'bold', display: 'block', marginBottom: '6px' }}>Convert to:</label>
+              <div className="setting-group">
+                <label>📁 Upload File WAV</label>
+                <input
+                  type="file"
+                  accept=".wav,audio/wav"
+                  onChange={handleLocalFileSelect}
+                  disabled={isUploadingFile}
+                  className="form-file"
+                />
+                {isUploadingFile && <small className="loading">⏳ Uploading...</small>}
+              </div>
+
+              <div className="recording-section">
+                <label>🎙️ Rekam Suara</label>
+                <button 
+                  onClick={toggleRecording} 
+                  className={`btn-record ${isRecording ? 'recording' : ''}`}
+                >
+                  {isRecording ? "⏹️ Berhenti" : "🎤 Rekam"}
+                </button>
+                {isRecording && (
+                  <div className="recording-timer">
+                    {String(Math.floor(recordingSeconds / 60)).padStart(2, '0')}:{String(recordingSeconds % 60).padStart(2, '0')} / 00:{MAX_RECORDING_SECONDS}
+                  </div>
+                )}
+                
+                {recordedUrl && (
+                  <div className="recorded-actions">
+                    <audio src={recordedUrl} controls className="audio-player" />
+                    <div className="button-row">
+                      <button onClick={useRecordingAsReference} disabled={isUploadingRecording} className="btn-small btn-primary">
+                        {isUploadingRecording ? '⏳' : '✅'} Use
+                      </button>
+                      <button onClick={discardRecording} className="btn-small btn-danger">🗑️ Discard</button>
+                    </div>
+
+                    <div className="clone-section">
+                      <label>🧬 Simpan sebagai Voice Baru</label>
+                      <input
+                        type="text"
+                        value={cloneVoiceName}
+                        onChange={(e) => setCloneVoiceName(e.target.value)}
+                        placeholder="Nama voice (e.g., Suara Saya)"
+                        disabled={isCloneLimitReached}
+                        className="form-input"
+                      />
+                      <button
+                        onClick={handleCloneVoice}
+                        disabled={isCloningVoice || isCloneLimitReached}
+                        className={`btn-full ${isCloneLimitReached ? 'btn-disabled' : 'btn-primary'}`}
+                      >
+                        {isCloningVoice ? '⏳ Cloning...' : isCloneLimitReached ? '⭐ Upgrade' : '🧬 Clone & Save'}
+                      </button>
+                      {!isCloneLimitReached && (
+                        <small>{cloneCount} / {MAX_FREE_CLONES} clones used</small>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {myClonedVoices.length > 0 && (
+                <div className="setting-group">
+                  <label>🧬 Voice Saya</label>
                   <select
-                    value={convertTargetFormat}
-                    onChange={(e) => setConvertTargetFormat(e.target.value)}
-                    disabled={isUploadingDoc || isConverting}
-                    style={{ width: '100%', padding: '8px' }}
+                    value={selectedClonedVoiceId}
+                    onChange={handleSelectClonedVoice}
+                    className="form-select"
                   >
-                    {SUPPORTED_DOC_FORMATS.map((fmt) => (
-                      <option key={fmt} value={fmt}>.{fmt.toUpperCase()}</option>
+                    <option value="">Pilih voice Anda</option>
+                    {myClonedVoices.map((voice) => (
+                      <option key={voice.$id} value={voice.$id}>
+                        {voice.name}
+                      </option>
                     ))}
                   </select>
                 </div>
               )}
 
-              {convertError && (
-                <div style={{ backgroundColor: '#fee', border: '1px solid #fcc', borderRadius: '6px', padding: '10px', marginBottom: '16px', color: '#c00', fontSize: '13px' }}>
-                  {convertError}
-                </div>
-              )}
-
-              <button
-                onClick={handleConvertDocument}
-                disabled={!convertSourceFile || isUploadingDoc || isConverting}
-                style={{
-                  width: '100%', padding: '12px',
-                  backgroundColor: (isUploadingDoc || isConverting || !convertSourceFile) ? '#ccc' : '#5B5BF6',
-                  color: '#fff', border: 'none', borderRadius: '8px', fontWeight: 'bold',
-                  cursor: (isUploadingDoc || isConverting) ? 'default' : 'pointer',
-                }}
-              >
-                {isUploadingDoc ? 'Uploading document...' : isConverting ? 'Converting...' : 'Convert Document'}
-              </button>
-
-              {convertResultUrl && (
-                <div style={{ marginTop: '24px', padding: '16px', backgroundColor: '#e9f7ef', borderRadius: '8px' }}>
-                  <h3 style={{ marginTop: 0 }}>✅ Conversion Complete</h3>
-                  {convertPreviewText && (
-                    <p style={{ fontSize: '13px', lineHeight: '1.6', color: '#333' }}>
-                      {convertPreviewText}{convertPreviewText.length >= 500 ? '...' : ''}
-                    </p>
-                  )}
-                  <button onClick={handleDownloadConverted} style={{ width: '100%', padding: '10px', backgroundColor: '#28a745', color: '#fff', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer', marginTop: '12px' }}>
-                    ⬇ Download .{convertTargetFormat.toUpperCase()}
-                  </button>
-                </div>
-              )}
-            </div>
-          ) : mode === 'subtitle' ? (
-            <div>
-              <p style={{ color: '#666', fontSize: '14px' }}>
-                Upload a short video (max {MAX_VIDEO_DURATION_SECONDS} seconds), and we'll transcribe the audio and generate a downloadable .srt or .vtt subtitle file.
-              </p>
-
-              <div style={{ marginBottom: '16px' }}>
-                <input type="file" accept="video/*" onChange={handlePickSubtitleVideo} disabled={isUploadingVideo || isTranscribing} />
-              </div>
-
-              {subtitleError && (
-                <div style={{ backgroundColor: '#fee', border: '1px solid #fcc', borderRadius: '6px', padding: '10px', marginBottom: '16px', color: '#c00', fontSize: '13px' }}>
-                  {subtitleError}
-                </div>
-              )}
-
-              <button
-                onClick={handleGenerateSubtitle}
-                disabled={!subtitleVideoFile || isUploadingVideo || isTranscribing}
-                style={{
-                  width: '100%', padding: '12px',
-                  backgroundColor: (isUploadingVideo || isTranscribing || !subtitleVideoFile) ? '#ccc' : '#5B5BF6',
-                  color: '#fff', border: 'none', borderRadius: '8px', fontWeight: 'bold',
-                  cursor: (isUploadingVideo || isTranscribing) ? 'default' : 'pointer',
-                }}
-              >
-                {isUploadingVideo ? 'Uploading video...' : isTranscribing ? 'Transcribing... (this may take a while)' : 'Generate Subtitle'}
-              </button>
-
-              {subtitleSegments && (
-                <div style={{ marginTop: '24px', padding: '16px', backgroundColor: '#f9f9f9', borderRadius: '8px' }}>
-                  <h3 style={{ marginTop: 0 }}>Transcript Preview</h3>
-                  <p style={{ fontSize: '13px', lineHeight: '1.6', color: '#333' }}>{segmentsToPlainText(subtitleSegments)}</p>
-
-                  <div style={{ display: 'flex', gap: '12px', marginTop: '16px' }}>
-                    <button onClick={() => handleDownloadSubtitle('srt')} style={{ flex: 1, padding: '10px', backgroundColor: '#00C2FF', color: '#fff', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer' }}>
-                      ⬇ Download .SRT
-                    </button>
-                    <button onClick={() => handleDownloadSubtitle('vtt')} style={{ flex: 1, padding: '10px', backgroundColor: '#00C2FF', color: '#fff', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer' }}>
-                      ⬇ Download .VTT
-                    </button>
+              <div className="music-section">
+                <h4>🎵 Musik Latar (Opsional)</h4>
+                {backgroundMusicName ? (
+                  <div className="music-info">
+                    <span>🎶 {backgroundMusicName.substring(0, 30)}</span>
+                    <button onClick={handleRemoveBackgroundMusic} className="btn-small btn-danger">✕</button>
                   </div>
-                </div>
-              )}
+                ) : (
+                  <input
+                    type="file"
+                    accept="audio/*"
+                    onChange={handlePickBackgroundMusic}
+                    disabled={isUploadingMusic}
+                    className="form-file"
+                  />
+                )}
+                {isUploadingMusic && <small className="loading">⏳ Uploading...</small>}
+
+                {backgroundMusicUrl && (
+                  <>
+                    <audio src={backgroundMusicUrl} controls className="audio-player" />
+                    <div className="setting-group">
+                      <label>🔊 Volume: <strong>{musicVolumeDb}dB</strong></label>
+                      <input
+                        type="range"
+                        min="-30"
+                        max="0"
+                        step="1"
+                        value={musicVolumeDb}
+                        onChange={(e) => setMusicVolumeDb(parseInt(e.target.value, 10))}
+                        className="form-range"
+                      />
+                    </div>
+                  </>
+                )}
+              </div>
             </div>
-          ) : (
-          <form onSubmit={handleGenerateSpeech}>
-            {mode === 'single' ? (
-              <div>
-                <label style={{ fontWeight: 'bold' }}>Text to Synthesize:</label>
-                {renderTextareaHeader(text.length)}
-                <textarea 
-                  ref={textRef}
-                  value={text} 
-                  onChange={(e) => setText(e.target.value)}
-                  maxLength={MAX_CHARS}
-                  rows="8" 
-                  style={{ width: '100%', padding: '15px', boxSizing: 'border-box', marginTop: '5px', borderRadius: '8px', border: '1px solid #d1d5db', outline: 'none', fontSize: '15px', resize: 'vertical' }}
-                  placeholder="Type or Paste your text here, wait until magic come...."
-                />
+          </aside>
+
+          <section className="content-main">
+            {mode === 'convert' ? (
+              <div className="card">
+                <h2 className="card-title">📄 Konversi Dokumen</h2>
+                <p className="card-description">Upload dokumen (.epub, .docx, .pdf, .txt) dan konversi ke format lain.</p>
+
+                <div className="setting-group">
+                  <label>📂 Pilih File</label>
+                  <input type="file" accept=".epub,.docx,.pdf,.txt" onChange={handlePickDocument} disabled={isUploadingDoc || isConverting} className="form-file" />
+                </div>
+
+                {convertSourceFile && (
+                  <div className="setting-group">
+                    <label>🔄 Konversi ke</label>
+                    <select value={convertTargetFormat} onChange={(e) => setConvertTargetFormat(e.target.value)} disabled={isUploadingDoc || isConverting} className="form-select">
+                      {SUPPORTED_DOC_FORMATS.map((fmt) => (
+                        <option key={fmt} value={fmt}>.{fmt.toUpperCase()}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
+                {convertError && <div className="error-box">{convertError}</div>}
+
+                <button onClick={handleConvertDocument} disabled={!convertSourceFile || isUploadingDoc || isConverting} className={`btn-full btn-primary ${isConverting ? 'btn-loading' : ''}`}>
+                  {isUploadingDoc ? 'Uploading...' : isConverting ? 'Converting...' : 'Convert'}
+                </button>
+
+                {convertResultUrl && (
+                  <div className="success-box">
+                    <h3>✅ Berhasil Dikonversi</h3>
+                    {convertPreviewText && <p className="preview-text">{convertPreviewText.substring(0, 300)}...</p>}
+                    <button onClick={handleDownloadConverted} className="btn-full btn-success">⬇️ Download .{convertTargetFormat.toUpperCase()}</button>
+                  </div>
+                )}
+              </div>
+            ) : mode === 'subtitle' ? (
+              <div className="card">
+                <h2 className="card-title">🎬 Pembuat Subtitle</h2>
+                <p className="card-description">Upload video (max {MAX_VIDEO_DURATION_SECONDS}s) dan generate subtitle .srt atau .vtt</p>
+
+                <div className="setting-group">
+                  <label>🎥 Pilih Video</label>
+                  <input type="file" accept="video/*" onChange={handlePickSubtitleVideo} disabled={isUploadingVideo || isTranscribing} className="form-file" />
+                </div>
+
+                {subtitleError && <div className="error-box">{subtitleError}</div>}
+
+                <button onClick={handleGenerateSubtitle} disabled={!subtitleVideoFile || isUploadingVideo || isTranscribing} className={`btn-full btn-primary ${isTranscribing ? 'btn-loading' : ''}`}>
+                  {isUploadingVideo ? 'Uploading...' : isTranscribing ? 'Transcribing...' : 'Generate Subtitle'}
+                </button>
+
+                {subtitleSegments && (
+                  <div className="success-box">
+                    <h3>✅ Subtitle Siap</h3>
+                    <p className="preview-text">{segmentsToPlainText(subtitleSegments).substring(0, 300)}...</p>
+                    <div className="button-row">
+                      <button onClick={() => handleDownloadSubtitle('srt')} className="btn-half btn-primary">⬇️ .SRT</button>
+                      <button onClick={() => handleDownloadSubtitle('vtt')} className="btn-half btn-primary">⬇️ .VTT</button>
+                    </div>
+                  </div>
+                )}
               </div>
             ) : (
-              <div>
-                <label style={{ fontWeight: 'bold' }}>Dialogue Script:</label>
-                {renderTextareaHeader(dialogueScript.length)}
-                <textarea 
-                  ref={dialogueRef}
-                  value={dialogueScript} 
-                  onChange={(e) => setDialogueScript(e.target.value)}
-                  maxLength={MAX_CHARS}
-                  rows="8" 
-                  style={{ width: '100%', padding: '15px', boxSizing: 'border-box', marginTop: '5px', borderRadius: '8px', border: '1px solid #d1d5db', outline: 'none', fontSize: '15px', resize: 'vertical' }}
-                  placeholder="[Adam]: I just finished testing...&#10;[Anna]: Oh really?"
-                />
+              <form onSubmit={handleGenerateSpeech} className="card">
+                <h2 className="card-title">{mode === 'single' ? '🎙️ Single Voice' : '🎭 Dialogue Mode'}</h2>
 
-                {detectedSpeakerNames.length > 0 && (
-                  <div style={{ marginTop: '15px', padding: '15px', backgroundColor: '#f0f8ff', border: '1px solid #cce4ff', borderRadius: '8px' }}>
-                    <label style={{ fontWeight: 'bold' }}>🎭 Assign Voice per Speaker:</label>
+                <div className="setting-group">
+                  <label>{mode === 'single' ? 'Masukkan Teks' : 'Script Dialogue'}</label>
+                  {renderTextareaHeader(mode === 'single' ? text.length : dialogueScript.length)}
+                  
+                  <textarea 
+                    ref={mode === 'single' ? textRef : dialogueRef}
+                    value={mode === 'single' ? text : dialogueScript}
+                    onChange={(e) => mode === 'single' ? setText(e.target.value) : setDialogueScript(e.target.value)}
+                    maxLength={MAX_CHARS}
+                    rows="10" 
+                    className="form-textarea"
+                    placeholder={mode === 'single' ? 'Ketik atau paste teks Anda...' : '[Nama]: Teks dialogue...\n[Nama2]: Balasan...'}
+                  />
+                </div>
+
+                {mode === 'dialogue' && detectedSpeakerNames.length > 0 && (
+                  <div className="speakers-box">
+                    <h4>🎭 Tetapkan Voice per Speaker</h4>
                     {detectedSpeakerNames.map((name) => {
-                      const assignment = speakerAssignments[name] || {};
                       const hasVoice = !!getSpeakerVoiceUrl(name);
                       return (
-                        <div key={name} style={{ marginTop: '10px', padding: '10px', backgroundColor: 'white', borderRadius: '6px', border: hasVoice ? '1px solid #28a745' : '1px solid #ddd' }}>
-                          <strong>🎤 {name}</strong> {hasVoice && <span style={{ color: '#28a745', fontSize: '12px' }}>✓ assigned</span>}
+                        <div key={name} className={`speaker-assign ${hasVoice ? 'assigned' : ''}`}>
+                          <strong>🎤 {name} {hasVoice && <span className="badge">✓</span>}</strong>
                           <select
-                            value={assignment.source === 'library' ? assignment.libraryId || '' : ''}
+                            value={speakerAssignments[name]?.source === 'library' ? speakerAssignments[name]?.libraryId || '' : ''}
                             onChange={(e) => handleAssignSpeakerLibrary(name, e.target.value)}
-                            style={{ width: '100%', padding: '6px', marginTop: '6px' }}
+                            className="form-select"
                           >
-                            <option value="">-- Select from library --</option>
+                            <option value="">Library</option>
                             {voiceLibrary.map((voice) => (
-                              <option key={voice.$id} value={voice.$id}>{voice.name || voice.label || voice.$id}</option>
+                              <option key={voice.$id} value={voice.$id}>{voice.name || voice.label}</option>
                             ))}
                           </select>
                           <input
                             type="text"
-                            placeholder="Or paste a custom voice URL..."
-                            value={assignment.source === 'custom' ? assignment.customUrl || '' : ''}
+                            placeholder="Atau URL custom..."
+                            value={speakerAssignments[name]?.source === 'custom' ? speakerAssignments[name]?.customUrl || '' : ''}
                             onChange={(e) => handleAssignSpeakerCustomUrl(name, e.target.value)}
-                            style={{ width: '100%', padding: '6px', marginTop: '6px', boxSizing: 'border-box' }}
+                            className="form-input"
                           />
                         </div>
                       );
                     })}
                   </div>
                 )}
-              </div>
+
+                <button 
+                  type="submit" 
+                  disabled={isLoading || checkingQuota}
+                  className={`btn-generate ${isLimitReached ? 'btn-upgrade' : 'btn-primary'} ${isLoading ? 'btn-loading' : ''}`}
+                >
+                  {checkingQuota ? 'Checking quota...' : isLoading ? `Generating... ${formatDuration(elapsedMs)}` : isLimitReached ? '⭐ Upgrade to Pro' : '🎵 Generate'}
+                </button>
+
+                {!checkingQuota && !isLimitReached && (
+                  <small style={{display: 'block', marginTop: '6px', color: '#666'}}>{generationCount} / {MAX_FREE_GENERATIONS} generations used</small>
+                )}
+              </form>
             )}
 
-            <style>{`
-              @keyframes narratorai-spin {
-                from { transform: rotate(0deg); }
-                to { transform: rotate(360deg); }
-              }
-            `}</style>
+            {generatedAudio && (
+              <div className="result-card">
+                <div className="result-header">
+                  <h3>✅ Audio Generated!</h3>
+                  <p className="result-time">Time: {finalProcessTime !== null ? formatDuration(finalProcessTime) : '--:--'}</p>
+                  {generatedFileName && <p className="file-name">{generatedFileName}</p>}
+                </div>
 
-            <button 
-              type="submit" 
-              disabled={isLoading || checkingQuota}
-              style={{
-                padding: '12px 24px',
-                backgroundColor: isLimitReached ? '#9D4EDD' : '#28a745',
-                color: 'white',
-                border: 'none',
-                borderRadius: '4px',
-                marginTop: '15px',
-                cursor: isLoading || checkingQuota ? 'not-allowed' : 'pointer',
-                fontSize: '16px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: '10px',
-                opacity: isLoading || checkingQuota ? 0.85 : 1,
-              }}
-            >
-              {(isLoading || checkingQuota) && (
-                <span style={{ display: 'inline-block', width: '16px', height: '16px', border: '2px solid rgba(255,255,255,0.4)', borderTopColor: '#fff', borderRadius: '50%', animation: 'narratorai-spin 0.8s linear infinite' }} />
-              )}
-              {checkingQuota ? 'Checking quota...' : isLoading ? `Generating... ${formatDuration(elapsedMs)}` : isLimitReached ? '⭐ Upgrade to Pro' : '🎵 Generate Speech'}
-            </button>
-            {!checkingQuota && !isLimitReached && (
-              <small style={{ display: 'block', marginTop: '6px', color: '#666' }}>
-                {generationCount} / {MAX_FREE_GENERATIONS} free generations used
-              </small>
+                <audio src={generatedAudio} controls autoPlay className="audio-player" />
+
+                <div className="result-actions">
+                  <button onClick={handleToggleLike} className={`btn-action ${isLiked ? 'liked' : ''}`}>
+                    {isLiked ? '❤️ Liked' : '🤍 Like'}
+                  </button>
+                  <button onClick={handleShareAudio} className="btn-action btn-primary">📤 Share</button>
+                  <button onClick={handleDownloadAudio} className="btn-action btn-success">⬇️ Download</button>
+                </div>
+              </div>
             )}
-          </form>
-          )}
-
-          {/* Area Hasil Audio */}
-          {generatedAudio && (
-            <div style={{ marginTop: '30px', padding: '20px', backgroundColor: '#e9f7ef', border: '1px solid #c3e6cb', borderRadius: '8px' }}>
-              <div style={{ backgroundColor: '#28a745', color: 'white', padding: '12px', borderRadius: '6px', textAlign: 'center', fontWeight: 'bold' }}>
-                ✅ Generated successfully! (Processed Time: {finalProcessTime !== null ? formatDuration(finalProcessTime) : '--:--.--'})
-                {generatedFileName && <><br />File: {generatedFileName}</>}
-              </div>
-              <audio src={generatedAudio} controls autoPlay style={{ width: '100%', marginTop: '15px' }} />
-              <div style={{ display: 'flex', gap: '10px', marginTop: '12px' }}>
-                <button onClick={handleToggleLike} style={{ flex: 1, padding: '10px', backgroundColor: isLiked ? '#ff4d6d' : '#e0e0e0', color: isLiked ? 'white' : 'black', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '14px', fontWeight: 'bold' }}>
-                  {isLiked ? '❤️ Liked' : '🤍 Like'}
-                </button>
-                <button onClick={handleShareAudio} style={{ flex: 1, padding: '10px', backgroundColor: '#007bff', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '14px', fontWeight: 'bold' }}>
-                  📤 Share
-                </button>
-                <button onClick={handleDownloadAudio} style={{ flex: 1, padding: '10px', backgroundColor: '#28a745', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '14px', fontWeight: 'bold' }}>
-                  ⬇️ Download
-                </button>
-              </div>
-            </div>
-          )}
-
+          </section>
         </div>
-      </div>
+      </main>
     </div>
   );
 };
