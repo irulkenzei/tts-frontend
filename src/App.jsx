@@ -768,6 +768,7 @@ const TtsServer = () => {
       await databases.createDocument(DATABASE_ID, CONVERT_JOBS_COLLECTION_ID, requestId, {
         status: 'pending',
         source_url: sourceUrl,
+        user_id: userId,
       });
 
       await fetch(`${APPWRITE_ENDPOINT}/functions/${CONVERT_DOCUMENT_FUNCTION_ID}/executions`, {
