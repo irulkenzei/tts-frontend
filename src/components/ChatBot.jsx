@@ -16,7 +16,7 @@ const appwriteFunctions = new Functions(client);
 const Chatbot = () => {
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState([
-    { text: "Halo! Ada yang bisa saya bantu terkait skrip atau narasi?", isBot: true }
+    { text: "Hello! Is there anything I can help you with regarding scripts or narration?", isBot: true }
   ]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -40,7 +40,7 @@ const Chatbot = () => {
       const execution = await appwriteFunctions.createExecution(
         GEMINI_FUNCTION_ID,
         JSON.stringify({ prompt: userMessage }),
-        false // false = mode synchronous (tunggu sampai AI membalas)
+        false // false = mode synchronous (wait until the AI ​​replies)
       );
 
       const responseData = JSON.parse(execution.responseBody);
@@ -52,7 +52,7 @@ const Chatbot = () => {
       setMessages(prev => [...prev, { text: responseData.reply, isBot: true }]);
     } catch (error) {
       console.error("Chatbot Error:", error);
-      setMessages(prev => [...prev, { text: "Maaf, terjadi kesalahan jaringan atau fungsi belum siap.", isBot: true }]);
+      setMessages(prev => [...prev, { text: "Sorry, a network error occurred or the function is not yet ready.", isBot: true }]);
     } finally {
       setIsLoading(false);
     }
@@ -76,7 +76,7 @@ const Chatbot = () => {
                 {msg.text}
               </div>
             ))}
-            {isLoading && <div className="message bot typing">Mengetik...</div>}
+            {isLoading && <div className="message bot typing">Typing...</div>}
             <div ref={messagesEndRef} />
           </div>
 
@@ -85,7 +85,7 @@ const Chatbot = () => {
               type="text"
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder="Tulis pesan..."
+              placeholder="Write a message..."
               disabled={isLoading}
             />
             <button type="submit" disabled={isLoading || !input.trim()}>➤</button>
