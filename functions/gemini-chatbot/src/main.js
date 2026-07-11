@@ -17,7 +17,7 @@ export default async ({ req, res, log, error }) => {
     // These logs won't be seen by your end users
     log(`Total users: ${response.total}`);
   } catch(err) {
-    error("Could not list users: " + err.message);
+    error("Could not list users: " + err.message); 
   }
 
   // The req object contains the request data
