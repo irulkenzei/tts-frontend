@@ -124,3 +124,31 @@
   background: #cccccc;
   cursor: not-allowed;
 }
+/* 🧩 Dropdown pilihan provider AI -- ditambahkan di chatbot-header,
+   sejajar dengan judul "AI Assistant". */
+.chatbot-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.chatbot-provider-select {
+  background: rgba(255, 255, 255, 0.15);
+  color: white;
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  border-radius: 8px;
+  padding: 4px 8px;
+  font-size: 12px;
+  cursor: pointer;
+  outline: none;
+}
+
+.chatbot-provider-select:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.chatbot-provider-select option {
+  color: #333; /* dropdown native browser biasanya render option dengan background putih -- teks gelap biar kebaca */
+}
+
