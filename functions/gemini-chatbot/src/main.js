@@ -45,13 +45,13 @@ export default async ({ req, res, log, error }) => {
       const userPrompt = payload.prompt;
 
       if (!userPrompt) {
-        return res.json({ error: "Prompt tidak boleh kosong" }, 400);
+        return res.json({ error: "The prompt cannot be empty." }, 400);
       }
 
       // Ambil API Key dari Environment Variable Appwrite
       const apiKey = process.env.GEMINI_API_KEY;
       const genAI = new GoogleGenerativeAI(apiKey);
-      const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+      const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
       log(`Memproses prompt: ${userPrompt}`);
       const result = await model.generateContent(userPrompt);
@@ -62,10 +62,10 @@ export default async ({ req, res, log, error }) => {
 
     } catch (err) {
       error(`Error dari Gemini: ${err.message}`);
-      return res.json({ error: "Gagal memproses AI" }, 500);
+      return res.json({ error: "Failed to process AI" }, 500);
     }
   }
 
   // Jika bukan POST request
-  return res.json({ message: "Gunakan method POST" });
+  return res.json({ message: "Use the POST method." });
 };
