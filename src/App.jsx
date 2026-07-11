@@ -1527,6 +1527,11 @@ const TtsServer = () => {
           </section>
         </div>
       </main>
+
+      {/* 💬 Chatbot widget -- sebelumnya cuma di-import di baris atas
+          tapi gak pernah dirender di JSX manapun, makanya gak pernah
+          muncul di website walau build-nya sukses. */}
+      <ChatBot />
     </div>
   );
 };
