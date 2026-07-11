@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { Client, Functions, Databases, Storage, ID, Query, Account } from 'appwrite';
 import { segmentsToPlainText, segmentsToSrt, segmentsToVtt } from './subtitleUtils';
 import './App.css';
+import ChatBot from './components/ChatBot';
 
 // Appwrite Configuration
 const APPWRITE_ENDPOINT = 'https://fra.cloud.appwrite.io/v1';
