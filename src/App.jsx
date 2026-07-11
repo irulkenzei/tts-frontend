@@ -1123,7 +1123,7 @@ const TtsServer = () => {
 
       <header className="app-header">
         <div className="header-content">
-          <h1 className="app-title">🎙️ NarratorAI</h1>
+          <h1 className="app-title">🎙️ Narrator AI</h1>
           <p className="app-subtitle">Powerful AI Text-to-Speech Platform</p>
         </div>
       </header>
