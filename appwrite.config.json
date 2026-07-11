@@ -1,0 +1,34 @@
+{
+    "organizationId": "6a44aa330024eb39d69f",
+    "projectId": "6a3a48a1003d333b0268",
+    "projectName": "Narator AI",
+    "endpoint": "https://fra.cloud.appwrite.io/v1",
+    "functions": [
+        {
+            "$id": "76589327sdfuuiuxcf53",
+            "name": "gemini-chatbot",
+            "runtime": "node-22",
+            "buildSpecification": "s-0.5vcpu-512mb",
+            "runtimeSpecification": "s-1vcpu-512mb",
+            "execute": [
+                "any"
+            ],
+            "events": [],
+            "scopes": [
+                "users.read"
+            ],
+            "schedule": "",
+            "timeout": 15,
+            "enabled": true,
+            "logging": true,
+            "entrypoint": "src/main.js",
+            "commands": "npm install",
+            "ignore": [
+                "node_modules",
+                ".npm"
+            ],
+            "deploymentRetention": 0,
+            "path": "functions/gemini-chatbot"
+        }
+    ]
+}
