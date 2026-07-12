@@ -1,23 +1,50 @@
-/* style.css - Tropical Modernism & Minimalist Sustainable Theme */
+/* support-style.css
+   -----------------
+   Dipakai oleh halaman statis di public/ (FAQ, Troubleshoot, Contact,
+   Request Feature, Privacy Policy, Terms of Service) -- SENGAJA pakai
+   variable CSS & warna yang SAMA PERSIS dengan src/App.css (yang sudah
+   "Matched with Mobile App Design"), biar seluruh naratorai.com terasa
+   satu produk, bukan 2 desain berbeda ketempel.
+*/
 
 :root {
-  /* Earthy & Minimalist Color Palette */
-  --bg: #F4F2EC; /* Warm off-white / bone */
-  --surface: #FFFFFF;
-  --surface-strong: #EAE6DB; /* Soft beige */
-  --text: #2B332E; /* Deep forest charcoal */
-  --muted: #5C6660; /* Soft moss gray */
-  --line: #D6D2C4;
-  --accent: #4A6B53; /* Tropical Sage Green */
-  --accent-light: #6A8F75;
-  --accent-soft: rgba(74, 107, 83, 0.12);
-  
-  /* Minimalist Shadows & Borders */
-  --shadow: 0 12px 32px rgba(43, 51, 46, 0.05);
-  --shadow-hover: 0 16px 40px rgba(43, 51, 46, 0.08);
-  --radius-xl: 12px; /* Softer, structured corners */
-  --radius-lg: 8px;
-  --radius-md: 4px;
+  /* Dark Mode Base -- identik dengan App.css */
+  --bg-primary: #0a0e27;
+  --bg-secondary: #141829;
+  --bg-tertiary: #1a1f3a;
+
+  /* Accent Colors (Cyan/Blue) */
+  --primary-color: #00d4ff;
+  --primary-hover: #00b8d4;
+  --secondary-color: #5B5BF6;
+  --secondary-hover: #4A4AE3;
+
+  /* Status Colors */
+  --success-color: #00d084;
+  --danger-color: #ff4081;
+  --warning-color: #ffa726;
+
+  /* Text Colors */
+  --text-primary: #ffffff;
+  --text-secondary: #b0bec5;
+  --text-tertiary: #78909c;
+
+  /* Borders & Shadows */
+  --border-color: #263238;
+  --border-light: #37474f;
+  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.5);
+
+  /* Border Radius */
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+
+  --transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-fast: all 0.2s ease;
+
   --content-width: 1180px;
 }
 
@@ -32,16 +59,17 @@ html {
 body {
   margin: 0;
   min-height: 100vh;
-  color: var(--text);
-  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", sans-serif;
-  background-color: var(--bg);
-  /* Subtle organic noise or flat background instead of neon gradients */
-  background-image: linear-gradient(180deg, #FAF9F6 0%, var(--bg) 100%);
+  color: var(--text-primary);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background: var(--bg-primary);
 }
 
 a {
   color: inherit;
-  transition: all 0.2s ease;
+  transition: var(--transition-fast);
 }
 
 .page-shell {
@@ -50,7 +78,9 @@ a {
   padding: 24px 0 60px;
 }
 
-/* Header & Footer Layout */
+/* ============================================
+   HEADER & FOOTER
+   ============================================ */
 .site-header,
 .site-footer {
   display: flex;
@@ -58,10 +88,10 @@ a {
   justify-content: space-between;
   gap: 20px;
   padding: 16px 32px;
-  background: var(--surface);
-  border: 1px solid var(--line);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
   border-radius: var(--radius-xl);
-  box-shadow: var(--shadow);
+  box-shadow: var(--shadow-md);
 }
 
 .brand {
@@ -72,7 +102,7 @@ a {
   font-size: 1.1rem;
   letter-spacing: -0.01em;
   text-decoration: none;
-  color: var(--text);
+  color: var(--text-primary);
 }
 
 .brand-mark {
@@ -80,7 +110,7 @@ a {
   height: 40px;
   border-radius: var(--radius-md);
   object-fit: cover;
-  border: 1px solid var(--line);
+  border: 1px solid var(--border-light);
 }
 
 .site-nav,
@@ -104,14 +134,16 @@ a {
 
 .site-nav a {
   padding: 8px 16px;
-  border-radius: var(--radius-lg);
-  color: var(--muted);
+  border-radius: var(--radius-md);
+  color: var(--text-secondary);
+  transition: var(--transition-fast);
 }
 
 .site-nav a:hover,
 .site-nav a.active {
-  color: var(--accent);
-  background: var(--accent-soft);
+  color: var(--text-primary);
+  background: rgba(0, 212, 255, 0.12);
+  box-shadow: 0 0 12px rgba(0, 212, 255, 0.15);
 }
 
 main {
@@ -123,7 +155,9 @@ main {
   margin: 0 auto;
 }
 
-/* Hero Section - Reconfigured Layout */
+/* ============================================
+   HERO (index.html)
+   ============================================ */
 .hero {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -135,10 +169,11 @@ main {
 .hero-panel,
 .card,
 .soft-panel {
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-xl);
-  box-shadow: var(--shadow);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
+  transition: var(--transition);
 }
 
 .hero-copy {
@@ -154,7 +189,7 @@ main {
   flex-direction: column;
   justify-content: center;
   gap: 24px;
-  background: var(--surface-strong);
+  background: var(--bg-tertiary);
   border: none;
 }
 
@@ -162,12 +197,17 @@ main {
   padding: 48px;
 }
 
+.card:hover {
+  border-color: var(--border-light);
+  box-shadow: var(--shadow-lg);
+}
+
 .soft-panel,
 .stat-card {
   padding: 24px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-lg);
-  background: var(--surface);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: var(--bg-tertiary);
 }
 
 .section-stack,
@@ -183,7 +223,7 @@ main {
   font-size: 0.8rem;
   letter-spacing: 0.16em;
   text-transform: uppercase;
-  color: var(--accent);
+  color: var(--primary-color);
   font-weight: 700;
 }
 
@@ -191,13 +231,18 @@ h1,
 h2 {
   margin: 0;
   letter-spacing: -0.02em;
-  color: var(--text);
+  color: var(--text-primary);
 }
 
 h1 {
   font-size: clamp(2.2rem, 3.5vw, 3.8rem);
   line-height: 1.1;
   font-weight: 800;
+  /* Gradient text -- sama persis pola .app-title di App.css */
+  background: linear-gradient(135deg, #00d4ff 0%, #5B5BF6 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
 }
 
 h2 {
@@ -210,12 +255,12 @@ p,
 li {
   margin: 0;
   line-height: 1.6;
-  color: var(--muted);
+  color: var(--text-secondary);
   font-size: 1.05rem;
 }
 
 strong {
-  color: var(--text);
+  color: var(--text-primary);
   font-weight: 600;
 }
 
@@ -226,42 +271,49 @@ strong {
   font-size: 1.15rem;
 }
 
-/* Buttons */
+/* ============================================
+   BUTTONS -- konsisten sama .btn-primary di App.css
+   ============================================ */
 .button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   min-height: 50px;
   padding: 0 24px;
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-md);
   text-decoration: none;
   font-weight: 600;
   letter-spacing: 0.02em;
+  transition: var(--transition-fast);
 }
 
 .button-primary {
-  background: var(--accent);
-  color: white;
+  background: linear-gradient(135deg, #00d4ff 0%, #5B5BF6 100%);
+  color: var(--bg-primary);
+  font-weight: 700;
+  border: none;
 }
 
 .button-primary:hover {
-  background: var(--accent-light);
+  box-shadow: 0 0 24px rgba(0, 212, 255, 0.4);
   transform: translateY(-2px);
-  box-shadow: var(--shadow-hover);
 }
 
 .button-secondary {
-  border: 2px solid var(--line);
-  background: transparent;
-  color: var(--text);
+  border: 2px solid var(--border-light);
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
 }
 
 .button-secondary:hover {
-  border-color: var(--accent);
-  color: var(--accent);
+  border-color: var(--primary-color);
+  color: var(--primary-color);
+  box-shadow: 0 0 16px rgba(0, 212, 255, 0.2);
 }
 
-/* Lists and Grids */
+/* ============================================
+   LISTS & GRIDS
+   ============================================ */
 .feature-list,
 .qa-list,
 .steps-list {
@@ -273,13 +325,14 @@ strong {
   position: relative;
   padding-left: 24px;
   margin-top: 16px;
+  color: var(--text-secondary);
 }
 
 .feature-list li::before {
   content: "•";
   position: absolute;
   left: 0;
-  color: var(--accent);
+  color: var(--primary-color);
   font-weight: bold;
 }
 
@@ -287,13 +340,13 @@ strong {
 .steps-list article,
 .legal-copy h2 {
   padding-top: 20px;
-  border-top: 1px solid var(--line);
+  border-top: 1px solid var(--border-color);
 }
 
 .stat-label {
   display: block;
   margin-bottom: 6px;
-  color: var(--muted);
+  color: var(--text-tertiary);
   font-size: 0.8rem;
   text-transform: uppercase;
   letter-spacing: 0.1em;
@@ -324,16 +377,18 @@ main > .card + .content-grid {
 
 .link-grid a {
   padding: 16px 24px;
-  border-radius: var(--radius-lg);
-  border: 1px solid var(--line);
-  background: var(--surface);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-color);
+  background: var(--bg-tertiary);
   font-weight: 600;
-  color: var(--text);
+  color: var(--text-primary);
+  transition: var(--transition-fast);
 }
 
 .link-grid a:hover {
-  border-color: var(--accent);
-  background: var(--accent-soft);
+  border-color: var(--primary-color);
+  background: rgba(0, 212, 255, 0.08);
+  box-shadow: 0 0 12px rgba(0, 212, 255, 0.2);
 }
 
 .info-grid > * {
@@ -346,16 +401,18 @@ main > .card + .content-grid {
   background: transparent;
   box-shadow: none;
   padding: 24px 0;
-  border-top: 1px solid var(--line);
+  border-top: 1px solid var(--border-color);
   border-radius: 0;
 }
 
 .site-footer p {
   font-weight: 600;
-  color: var(--text);
+  color: var(--text-primary);
 }
 
-/* Responsive Adjustments */
+/* ============================================
+   RESPONSIVE
+   ============================================ */
 @media (max-width: 980px) {
   .hero {
     grid-template-columns: 1fr;
