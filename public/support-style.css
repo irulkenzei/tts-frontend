@@ -1,42 +1,40 @@
 /* support-style.css
    -----------------
    Dipakai oleh halaman statis di public/ (FAQ, Troubleshoot, Contact,
-   Request Feature, Privacy Policy, Terms of Service) -- SENGAJA pakai
-   variable CSS & warna yang SAMA PERSIS dengan src/App.css (yang sudah
-   "Matched with Mobile App Design"), biar seluruh naratorai.com terasa
-   satu produk, bukan 2 desain berbeda ketempel.
+   Request Feature, Privacy Policy, Terms of Service).
+
+   PENTING: bagian header (.app-header/.app-title/.app-subtitle) dan nav
+   (.mode-nav/.mode-btn) di sini di-COPY PERSIS dari src/App.css -- bukan
+   cuma warnanya yang disamain, tapi MARKUP & CLASS-nya sama sehingga
+   begitu user pindah dari homepage React ke halaman statis ini, bagian
+   atas layar TIDAK BERUBAH SAMA SEKALI. Itu yang bikin terasa satu
+   template utuh, bukan 2 desain ditempel.
 */
 
 :root {
-  /* Dark Mode Base -- identik dengan App.css */
   --bg-primary: #0a0e27;
   --bg-secondary: #141829;
   --bg-tertiary: #1a1f3a;
 
-  /* Accent Colors (Cyan/Blue) */
   --primary-color: #00d4ff;
   --primary-hover: #00b8d4;
   --secondary-color: #5B5BF6;
   --secondary-hover: #4A4AE3;
 
-  /* Status Colors */
   --success-color: #00d084;
   --danger-color: #ff4081;
   --warning-color: #ffa726;
 
-  /* Text Colors */
   --text-primary: #ffffff;
   --text-secondary: #b0bec5;
   --text-tertiary: #78909c;
 
-  /* Borders & Shadows */
   --border-color: #263238;
   --border-light: #37474f;
   --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.3);
   --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.4);
   --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.5);
 
-  /* Border Radius */
   --radius-sm: 4px;
   --radius-md: 8px;
   --radius-lg: 12px;
@@ -44,170 +42,141 @@
 
   --transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   --transition-fast: all 0.2s ease;
-
-  --content-width: 1180px;
 }
 
 * {
+  margin: 0;
+  padding: 0;
   box-sizing: border-box;
 }
 
-html {
-  scroll-behavior: smooth;
+html, body {
+  width: 100%;
 }
 
 body {
-  margin: 0;
-  min-height: 100vh;
-  color: var(--text-primary);
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
     'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   background: var(--bg-primary);
+  color: var(--text-primary);
+  min-height: 100vh;
 }
 
 a {
   color: inherit;
-  transition: var(--transition-fast);
-}
-
-.page-shell {
-  width: min(calc(100% - 32px), var(--content-width));
-  margin: 0 auto;
-  padding: 24px 0 60px;
 }
 
 /* ============================================
-   HEADER & FOOTER
+   APP CONTAINER -- identik App.css
    ============================================ */
-.site-header,
-.site-footer {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 20px;
-  padding: 16px 32px;
-  background: var(--bg-secondary);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-xl);
+.app-container {
+  min-height: 100vh;
+  background: var(--bg-primary);
+}
+
+.app-header {
+  background: linear-gradient(135deg, #1a1f3a 0%, #0a0e27 100%);
+  border-bottom: 1px solid var(--border-color);
+  color: var(--text-primary);
+  padding: 40px 20px;
+  text-align: center;
   box-shadow: var(--shadow-md);
 }
 
-.brand {
-  display: inline-flex;
-  align-items: center;
-  gap: 14px;
-  font-weight: 700;
-  font-size: 1.1rem;
-  letter-spacing: -0.01em;
+.header-content {
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+.app-title-link {
   text-decoration: none;
-  color: var(--text-primary);
+  display: inline-block;
 }
 
-.brand-mark {
-  width: 40px;
-  height: 40px;
-  border-radius: var(--radius-md);
-  object-fit: cover;
-  border: 1px solid var(--border-light);
+.app-title {
+  font-size: 48px;
+  font-weight: 700;
+  margin-bottom: 8px;
+  letter-spacing: -0.5px;
+  background: linear-gradient(135deg, #00d4ff 0%, #5B5BF6 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
 }
 
-.site-nav,
-.footer-links,
-.hero-actions,
-.link-grid,
-.info-grid,
-.content-grid {
+.app-subtitle {
+  font-size: 16px;
+  color: var(--text-secondary);
+  font-weight: 300;
+}
+
+.app-main {
+  max-width: 1400px;
+  margin: 30px auto;
+  padding: 0 20px 60px;
+}
+
+/* ============================================
+   SUPPORT NAV -- pakai class .mode-nav/.mode-btn
+   yang SAMA PERSIS dengan tombol switch mode di app
+   ============================================ */
+.mode-nav {
   display: flex;
   gap: 12px;
+  margin-bottom: 30px;
   flex-wrap: wrap;
+  justify-content: center;
 }
 
-.site-nav a,
-.footer-links a,
-.link-grid a {
-  text-decoration: none;
-  font-weight: 500;
-  font-size: 0.95rem;
-}
-
-.site-nav a {
-  padding: 8px 16px;
+.mode-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 18px;
+  border: 2px solid var(--border-light);
+  background: var(--bg-secondary);
   border-radius: var(--radius-md);
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 14px;
   color: var(--text-secondary);
-  transition: var(--transition-fast);
+  text-decoration: none;
+  transition: var(--transition);
+  box-shadow: var(--shadow-sm);
 }
 
-.site-nav a:hover,
-.site-nav a.active {
+.mode-btn:hover {
+  border-color: var(--primary-color);
   color: var(--text-primary);
-  background: rgba(0, 212, 255, 0.12);
-  box-shadow: 0 0 12px rgba(0, 212, 255, 0.15);
+  box-shadow: 0 0 16px rgba(0, 212, 255, 0.2);
+  transform: translateY(-2px);
 }
 
-main {
-  padding: 40px 0;
-}
-
-.narrow-main {
-  max-width: 800px;
-  margin: 0 auto;
+.mode-btn.active {
+  background: linear-gradient(135deg, #00d4ff 0%, #5B5BF6 100%);
+  color: var(--bg-primary);
+  border-color: transparent;
+  box-shadow: 0 0 24px rgba(0, 212, 255, 0.4);
 }
 
 /* ============================================
-   HERO (index.html)
+   CONTENT AREA -- konten halaman pendukung, tetap
+   pakai warna/variable yang sama, lebar dibatasi
+   biar teks enak dibaca (beda dari app-main yang lebar)
    ============================================ */
-.hero {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 32px;
-  align-items: stretch;
-}
-
-.hero-copy,
-.hero-panel,
-.card,
-.soft-panel {
-  background: var(--bg-secondary);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-md);
-  transition: var(--transition);
-}
-
-.hero-copy {
-  padding: 56px 48px;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-}
-
-.hero-panel {
-  padding: 40px;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  gap: 24px;
-  background: var(--bg-tertiary);
-  border: none;
+.narrow-main {
+  max-width: 760px;
+  margin: 0 auto;
 }
 
 .card {
-  padding: 48px;
-}
-
-.card:hover {
-  border-color: var(--border-light);
-  box-shadow: var(--shadow-lg);
-}
-
-.soft-panel,
-.stat-card {
-  padding: 24px;
+  background: var(--bg-secondary);
   border: 1px solid var(--border-color);
-  border-radius: var(--radius-md);
-  background: var(--bg-tertiary);
+  border-radius: var(--radius-lg);
+  padding: 40px;
+  box-shadow: var(--shadow-md);
 }
 
 .section-stack,
@@ -219,7 +188,6 @@ main {
 }
 
 .eyebrow {
-  margin: 0;
   font-size: 0.8rem;
   letter-spacing: 0.16em;
   text-transform: uppercase;
@@ -227,97 +195,33 @@ main {
   font-weight: 700;
 }
 
-h1,
-h2 {
-  margin: 0;
+h1.page-title {
+  font-size: clamp(1.8rem, 3vw, 2.4rem);
+  font-weight: 800;
   letter-spacing: -0.02em;
   color: var(--text-primary);
-}
-
-h1 {
-  font-size: clamp(2.2rem, 3.5vw, 3.8rem);
-  line-height: 1.1;
-  font-weight: 800;
-  /* Gradient text -- sama persis pola .app-title di App.css */
-  background: linear-gradient(135deg, #00d4ff 0%, #5B5BF6 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
+  margin-top: 6px;
 }
 
 h2 {
-  font-size: clamp(1.4rem, 2vw, 1.8rem);
-  line-height: 1.3;
-  font-weight: 600;
+  font-size: 1.3rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: -0.01em;
 }
 
-p,
-li {
-  margin: 0;
+p, li {
   line-height: 1.6;
   color: var(--text-secondary);
-  font-size: 1.05rem;
+  font-size: 1rem;
 }
 
-strong {
-  color: var(--text-primary);
-  font-weight: 600;
-}
-
-.lede {
-  margin-top: 24px;
-  margin-bottom: 32px;
-  max-width: 90%;
-  font-size: 1.15rem;
-}
-
-/* ============================================
-   BUTTONS -- konsisten sama .btn-primary di App.css
-   ============================================ */
-.button {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 50px;
-  padding: 0 24px;
-  border-radius: var(--radius-md);
-  text-decoration: none;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  transition: var(--transition-fast);
-}
-
-.button-primary {
-  background: linear-gradient(135deg, #00d4ff 0%, #5B5BF6 100%);
-  color: var(--bg-primary);
-  font-weight: 700;
-  border: none;
-}
-
-.button-primary:hover {
-  box-shadow: 0 0 24px rgba(0, 212, 255, 0.4);
-  transform: translateY(-2px);
-}
-
-.button-secondary {
-  border: 2px solid var(--border-light);
-  background: var(--bg-tertiary);
-  color: var(--text-primary);
-}
-
-.button-secondary:hover {
-  border-color: var(--primary-color);
+a:not(.mode-btn):not(.app-title-link) {
   color: var(--primary-color);
-  box-shadow: 0 0 16px rgba(0, 212, 255, 0.2);
+  text-decoration: underline;
 }
 
-/* ============================================
-   LISTS & GRIDS
-   ============================================ */
-.feature-list,
-.qa-list,
-.steps-list {
-  padding: 0;
+.feature-list {
   list-style: none;
 }
 
@@ -325,7 +229,6 @@ strong {
   position: relative;
   padding-left: 24px;
   margin-top: 16px;
-  color: var(--text-secondary);
 }
 
 .feature-list li::before {
@@ -343,45 +246,38 @@ strong {
   border-top: 1px solid var(--border-color);
 }
 
-.stat-label {
-  display: block;
-  margin-bottom: 6px;
-  color: var(--text-tertiary);
-  font-size: 0.8rem;
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
+.info-grid {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
 }
 
-.content-grid {
-  margin-top: 32px;
-  align-items: stretch;
-  gap: 24px;
+.info-grid > * {
+  flex: 1 1 220px;
 }
 
-.content-grid > * {
-  flex: 1 1 340px;
-}
-
-main > .card,
-main > .content-grid + .card,
-main > .hero + .card,
-main > .hero + .content-grid,
-main > .card + .card,
-main > .card + .content-grid {
-  margin-top: 32px;
+.soft-panel {
+  padding: 20px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: var(--bg-tertiary);
 }
 
 .link-grid {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
   margin-top: 12px;
 }
 
 .link-grid a {
-  padding: 16px 24px;
+  padding: 14px 20px;
   border-radius: var(--radius-md);
   border: 1px solid var(--border-color);
   background: var(--bg-tertiary);
   font-weight: 600;
-  color: var(--text-primary);
+  color: var(--text-primary) !important;
+  text-decoration: none !important;
   transition: var(--transition-fast);
 }
 
@@ -391,18 +287,16 @@ main > .card + .content-grid {
   box-shadow: 0 0 12px rgba(0, 212, 255, 0.2);
 }
 
-.info-grid > * {
-  flex: 1 1 240px;
-}
-
 .site-footer {
-  margin-top: 40px;
-  border: none;
-  background: transparent;
-  box-shadow: none;
-  padding: 24px 0;
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 24px 20px 0;
   border-top: 1px solid var(--border-color);
-  border-radius: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
 }
 
 .site-footer p {
@@ -410,34 +304,48 @@ main > .card + .content-grid {
   color: var(--text-primary);
 }
 
-/* ============================================
-   RESPONSIVE
-   ============================================ */
-@media (max-width: 980px) {
-  .hero {
-    grid-template-columns: 1fr;
-  }
-
-  .site-header {
-    flex-direction: column;
-    align-items: flex-start;
-  }
+.footer-links {
+  display: flex;
+  gap: 16px;
 }
 
-@media (max-width: 720px) {
-  .page-shell {
-    width: calc(100% - 32px);
-    padding-top: 16px;
+.footer-links a {
+  color: var(--text-secondary) !important;
+  text-decoration: none !important;
+  font-size: 0.9rem;
+}
+
+.footer-links a:hover {
+  color: var(--primary-color) !important;
+}
+
+@media (max-width: 768px) {
+  .app-header {
+    padding: 30px 16px;
   }
 
-  .site-header,
-  .hero-copy,
-  .hero-panel,
+  .app-title {
+    font-size: 32px;
+  }
+
+  .app-subtitle {
+    font-size: 14px;
+  }
+
+  .app-main {
+    padding: 0 16px 40px;
+  }
+
   .card {
     padding: 24px;
   }
 
-  .site-nav {
+  .mode-nav {
     gap: 8px;
+  }
+
+  .mode-btn {
+    padding: 8px 12px;
+    font-size: 13px;
   }
 }
