@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { Client, Functions, Databases, Storage, ID, Query, Account } from 'appwrite';
 import { segmentsToPlainText, segmentsToSrt, segmentsToVtt } from './subtitleUtils';
 import './App.css';
-import ChatBot from './components/ChatBot'; 
+import ChatBot from './components/ChatBot';
 
 // Appwrite Configuration
 const APPWRITE_ENDPOINT = 'https://fra.cloud.appwrite.io/v1';
@@ -10,7 +10,7 @@ const APPWRITE_PROJECT_ID = '6a3a48a1003d333b0268';
 
 const client = new Client()
     .setEndpoint(APPWRITE_ENDPOINT)
-    .setProject(APPWRITE_PROJECT_ID); 
+    .setProject(APPWRITE_PROJECT_ID);
 
 const appwriteFunctions = new Functions(client);
 const databases = new Databases(client);
@@ -1123,7 +1123,7 @@ const TtsServer = () => {
 
       <header className="app-header">
         <div className="header-content">
-          <h1 className="app-title">🎙️ Narrator AI</h1>
+          <h1 className="app-title">🎙️ NarratorAI</h1>
           <p className="app-subtitle">Powerful AI Text-to-Speech Platform</p>
         </div>
       </header>
@@ -1527,6 +1527,22 @@ const TtsServer = () => {
           </section>
         </div>
       </main>
+
+      {/* 🦶 Footer -- link ke halaman statis di public/ (FAQ, Troubleshoot,
+          Contact, Request a Feature, Privacy Policy, Terms). Halaman ini
+          sengaja pakai <a> biasa (bukan React Router), karena itu memang
+          file HTML statis terpisah di public/, bukan komponen React. */}
+      <footer className="site-footer">
+        <p>Narator AI</p>
+        <nav className="footer-links" aria-label="Support navigation">
+          <a href="/faq">FAQ</a>
+          <a href="/troubleshoot">Troubleshoot</a>
+          <a href="/contact">Contact</a>
+          <a href="/request-feature">Request a Feature</a>
+          <a href="/privacy-policy">Privacy Policy</a>
+          <a href="/terms-of-service">Terms</a>
+        </nav>
+      </footer>
 
       {/* 💬 Chatbot widget -- sebelumnya cuma di-import di baris atas
           tapi gak pernah dirender di JSX manapun, makanya gak pernah

@@ -885,6 +885,58 @@ body {
 }
 
 /* ============================================
+   FOOTER -- navigasi ke halaman statis di public/
+   (FAQ, Troubleshoot, Contact, dst)
+   ============================================ */
+
+.site-footer {
+  max-width: 1400px;
+  margin: 40px auto 0;
+  padding: 24px 20px 40px;
+  border-top: 1px solid var(--border-color);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.site-footer p {
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.footer-links {
+  display: flex;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+
+.footer-links a {
+  color: var(--text-secondary);
+  text-decoration: none;
+  font-size: 0.9rem;
+  transition: var(--transition-fast);
+}
+
+.footer-links a:hover {
+  color: var(--primary-color);
+}
+
+@media (max-width: 768px) {
+  .site-footer {
+    justify-content: center;
+    text-align: center;
+  }
+
+  .footer-links {
+    justify-content: center;
+    gap: 12px 16px;
+  }
+}
+
+/* ============================================
    RESPONSIVE DESIGN
    ============================================ */
 
