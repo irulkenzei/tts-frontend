@@ -1,4 +1,5 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import { Client, Databases } from 'node-appwrite';
 
 // 🧩 Future-proof architecture -- satu Function ini nge-handle semua provider
 // AI, tinggal kirim `provider` dari client (default: gemini, gratis).
@@ -127,49 +128,97 @@ const PROVIDER_HANDLERS = {
   [AIProviders.QWEN]: callQwen,
 };
 
+// ============================================================
+// MAIN HANDLER
+// ------------------------------------------------------------
+// 🔧 ARSITEKTUR: sebelumnya dipanggil SYNCHRONOUS (client nunggu response
+// langsung) -- kena limit KERAS 30 detik dari Appwrite ("Synchronous
+// function execution timed out"), karena beberapa provider (Claude/GPT
+// terutama, kadang Gemini juga) bisa aja butuh waktu lebih dari itu buat
+// prompt yang agak panjang/kompleks. Sekarang dipanggil ASYNCHRONOUS --
+// hasilnya ditulis ke Database (collection `chatbot_jobs`), client poll
+// dokumen itu (bukan nunggu responseBody, yang TERBUKTI selalu kosong
+// buat eksekusi async -- pelajaran dari fitur lain di project ini).
+// ------------------------------------------------------------
 export default async ({ req, res, log, error }) => {
-  // Pastikan request adalah POST
-  if (req.method === 'POST') {
-    try {
-      // Ambil prompt & provider dari body request (dari frontend/mobile app)
-      const payload = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
-      const userPrompt = payload.prompt;
-      const requestedProvider = payload.provider || AIProviders.GEMINI;
-
-      if (!userPrompt) {
-        return res.json({ error: 'The prompt cannot be empty.' }, 400);
-      }
-
-      const handler = PROVIDER_HANDLERS[requestedProvider];
-      if (!handler) {
-        return res.json({ error: `Unknown provider: ${requestedProvider}` }, 400);
-      }
-
-      let usedProvider = requestedProvider;
-      let responseText;
-      try {
-        responseText = await handler(userPrompt, log);
-      } catch (providerErr) {
-        // 🛟 Fallback ke Gemini kalau provider yang diminta gagal (mis. API
-        // key-nya belum di-set) -- biar user tetap dapat jawaban daripada
-        // error total, terutama berguna selagi ChatGPT/Claude/Qwen masih
-        // dalam proses setup API key satu-satu.
-        if (requestedProvider !== AIProviders.GEMINI) {
-          error(`[${requestedProvider}] gagal, fallback ke Gemini: ${providerErr.message}`);
-          usedProvider = AIProviders.GEMINI;
-          responseText = await callGemini(userPrompt, log);
-        } else {
-          throw providerErr;
-        }
-      }
-
-      // Kembalikan respon ke frontend/mobile app
-      return res.json({ reply: responseText, provider: usedProvider });
-    } catch (err) {
-      error(`Error dari AI provider: ${err.message}`);
-      return res.json({ error: 'Failed to process AI' }, 500);
-    }
+  if (req.method !== 'POST') {
+    return res.json({ message: 'Use the POST method.' });
   }
-  // Jika bukan POST request
-  return res.json({ message: 'Use the POST method.' });
+
+  const DATABASE_ID = process.env.APPWRITE_DATABASE_ID;
+  const JOBS_COLLECTION_ID = 'chatbot_jobs';
+
+  let requestId;
+  let databases;
+
+  try {
+    const payload = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : req.body || {};
+    const { requestId: reqId, prompt: userPrompt, provider } = payload;
+    requestId = reqId;
+    const requestedProvider = provider || AIProviders.GEMINI;
+
+    if (!requestId) return res.json({ success: false, error: 'requestId is required' }, 400);
+    if (!userPrompt) return res.json({ success: false, error: 'prompt cannot be empty' }, 400);
+
+    const client = new Client()
+      .setEndpoint(process.env.APPWRITE_FUNCTION_API_ENDPOINT)
+      .setProject(process.env.APPWRITE_FUNCTION_PROJECT_ID)
+      .setKey(process.env.APPWRITE_API_KEY);
+    databases = new Databases(client);
+
+    const handler = PROVIDER_HANDLERS[requestedProvider];
+    if (!handler) {
+      await databases.updateDocument(DATABASE_ID, JOBS_COLLECTION_ID, requestId, { status: 'failed' });
+      return res.json({ success: false, error: `Unknown provider: ${requestedProvider}` }, 400);
+    }
+
+    let usedProvider = requestedProvider;
+    let responseText;
+    try {
+      responseText = await handler(userPrompt, log);
+    } catch (providerErr) {
+      // 🛟 Fallback ke Gemini kalau provider yang diminta gagal (mis. API
+      // key-nya belum di-set) -- biar user tetap dapat jawaban daripada
+      // error total.
+      if (requestedProvider !== AIProviders.GEMINI) {
+        error(`[${requestedProvider}] gagal, fallback ke Gemini: ${providerErr.message}`);
+        usedProvider = AIProviders.GEMINI;
+        responseText = await callGemini(userPrompt, log);
+      } else {
+        throw providerErr;
+      }
+    }
+
+    // ⚠️ Attribute `reply` di collection chatbot_jobs dibatesin 10.000
+    // karakter. Kalau balasan AI kebetulan lebih panjang dari itu (misal
+    // user minta draft skrip panjang), databases.updateDocument() bakal
+    // DITOLAK TOTAL sama Appwrite (bukan sekadar kepotong) -- seluruh
+    // request jadi gagal (status: 'failed'). Dipotong di sini SUPAYA GAK
+    // GAGAL TOTAL -- lebih baik balasan kepotong drpd request gagal.
+    const MAX_REPLY_SIZE = 10000;
+    if (responseText.length > MAX_REPLY_SIZE) {
+      log(`WARNING: reply exceeds ${MAX_REPLY_SIZE} chars (${responseText.length}), truncating.`);
+      responseText = responseText.slice(0, MAX_REPLY_SIZE);
+    }
+
+    // ✅ Hasil ditulis ke Database -- INI yang di-poll client, bukan
+    // responseBody (selalu kosong buat async execution).
+    await databases.updateDocument(DATABASE_ID, JOBS_COLLECTION_ID, requestId, {
+      status: 'completed',
+      reply: responseText,
+      provider: usedProvider,
+    });
+
+    return res.json({ success: true });
+  } catch (err) {
+    error(`Error dari AI provider: ${err.message}`);
+    if (requestId && databases) {
+      try {
+        await databases.updateDocument(DATABASE_ID, 'chatbot_jobs', requestId, { status: 'failed' });
+      } catch (updateErr) {
+        error(`Failed to update job status: ${updateErr.message}`);
+      }
+    }
+    return res.json({ success: false, error: 'Failed to process AI' }, 500);
+  }
 };
