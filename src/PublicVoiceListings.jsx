@@ -48,6 +48,13 @@ function ListingCard({ listing }) {
   return (
     <div className="voice-card">
       {!!listing.quote_text && <p className="voice-card-quote">&ldquo;{listing.quote_text}&rdquo;</p>}
+      {!!listing.tags && (
+        <div className="voice-tags-row">
+          {listing.tags.split(',').map((t) => t.trim()).filter(Boolean).map((tag) => (
+            <span className="voice-tag-pill" key={tag}>{tag}</span>
+          ))}
+        </div>
+      )}
       <div className="voice-card-footer">
         <div className="voice-card-title-row">
           <button className="voice-play-btn" onClick={togglePlay} aria-label={isPlaying ? 'Pause' : 'Play'}>
