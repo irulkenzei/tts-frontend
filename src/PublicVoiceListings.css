@@ -79,6 +79,22 @@
   border-top: 1px solid var(--border-color, #263238);
 }
 
+.voice-tags-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.voice-tag-pill {
+  background: rgba(0, 212, 255, 0.1);
+  border: 1px solid rgba(0, 212, 255, 0.25);
+  color: var(--primary-color, #00d4ff);
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 3px 10px;
+  border-radius: 999px;
+}
+
 .voice-card-title-row {
   display: flex;
   align-items: center;
