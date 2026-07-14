@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { databases, storage, Query, DATABASE_ID, VOICE_LISTINGS_COLLECTION_ID, RECORDING_UPLOAD_BUCKET_ID } from './appwriteConfig';
+import { databases, Query, DATABASE_ID, VOICE_LISTINGS_COLLECTION_ID } from './appwriteConfig';
 import './PublicVoiceListings.css';
 
 function ListingCard({ listing }) {
@@ -7,7 +7,9 @@ function ListingCard({ listing }) {
   const [isPlaying, setIsPlaying] = useState(false);
   const [shareStatus, setShareStatus] = useState('');
 
-  const audioUrl = storage.getFileView(RECORDING_UPLOAD_BUCKET_ID, listing.audio_file_id).toString();
+  // 🔧 URL audio sekarang langsung dari R2 (audio_url), bukan dari
+  // Appwrite Storage lagi -- gak perlu storage.getFileView() lagi.
+  const audioUrl = listing.audio_url;
 
   const togglePlay = () => {
     if (!audioRef.current) return;
