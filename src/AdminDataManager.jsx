@@ -35,10 +35,15 @@ function fileToBase64(file) {
 }
 
 // ============================================================
-// TAB 1 -- Batch Upload (parse filename, auto-create speaker kalau
-// belum ada, upload ke R2, insert speaker_emotion_samples)
+// TAB 1 -- Batch Upload
+// ------------------------------------------------------------
+// 🔧 REVISI: emotion voices ini KATALOG MANDIRI -- BUKAN varian dari
+// speaker yang sudah ada. Tiap baris punya identitas lengkap sendiri
+// (name, gender, language, emotion), gak nyambung/gak butuh ke
+// collection `speakers` sama sekali. Makanya gak ada lagi logic
+// "cari/auto-create speaker" -- langsung insert ke speaker_emotion_samples.
 // ============================================================
-function BatchUploadTab({ speakers, refreshSpeakers }) {
+function BatchUploadTab() {
   const [rows, setRows] = useState([]);
   const [uploading, setUploading] = useState(false);
 
@@ -46,13 +51,9 @@ function BatchUploadTab({ speakers, refreshSpeakers }) {
     const files = Array.from(e.target.files || []);
     const newRows = files.map((file) => {
       const parsed = parseEmotionFilename(file.name);
-      const existingSpeaker = parsed
-        ? speakers.find((s) => s.label?.toLowerCase() === parsed.speakerName.toLowerCase())
-        : null;
       return {
         file,
         parsed,
-        existingSpeaker, // null = akan dibikin baru otomatis
         status: !parsed ? 'invalid_name' : 'ready',
         error: null,
       };
@@ -67,7 +68,6 @@ function BatchUploadTab({ speakers, refreshSpeakers }) {
   const handleUploadAll = async () => {
     setUploading(true);
     const functions = new Functions(client);
-    let speakerCreatedCount = 0;
 
     for (let i = 0; i < rows.length; i++) {
       const row = rows[i];
@@ -83,21 +83,12 @@ function BatchUploadTab({ speakers, refreshSpeakers }) {
         const result = JSON.parse(execution.responseBody || '{}');
         if (!result.success) throw new Error(result.error || 'Upload to R2 failed.');
 
-        let speakerId = row.existingSpeaker?.$id;
-        if (!speakerId) {
-          const newSpeaker = await databases.createDocument(DATABASE_ID, SPEAKERS_COLLECTION_ID, ID.unique(), {
-            label: row.parsed.speakerName,
-            gender: row.parsed.gender,
-            description: row.parsed.language,
-            value: result.url,
-            avatar_url: DEFAULT_AVATAR,
-          });
-          speakerId = newSpeaker.$id;
-          speakerCreatedCount++;
-        }
-
+        // Insert LANGSUNG sebagai entry mandiri -- name/gender/language/
+        // emotion semuanya dari filename, gak ada speaker_id sama sekali.
         await databases.createDocument(DATABASE_ID, EMOTION_SAMPLES_COLLECTION_ID, ID.unique(), {
-          speaker_id: speakerId,
+          name: row.parsed.speakerName,
+          gender: row.parsed.gender,
+          language: row.parsed.language,
           emotion: row.parsed.emotion,
           audio_url: result.url,
         });
@@ -108,15 +99,14 @@ function BatchUploadTab({ speakers, refreshSpeakers }) {
       }
     }
     setUploading(false);
-    if (speakerCreatedCount > 0) refreshSpeakers();
   };
 
   const readyCount = rows.filter((r) => r.status === 'ready').length;
 
   return (
     <div className="admin-upload-card">
-      <h2>Batch upload -- filename: Speaker-Gender-Language-Emotion.wav</h2>
-      <p className="admin-hint">Speaker baru yang belum ada di daftar akan otomatis dibuat.</p>
+      <h2>Batch upload -- filename: Name-Gender-Language-Emotion.wav</h2>
+      <p className="admin-hint">Tiap file jadi 1 entry mandiri di katalog Emotion Voices -- gak terhubung ke speaker biasa.</p>
       <input type="file" accept="audio/*" multiple onChange={handleFilesSelected} disabled={uploading} />
 
       {rows.length > 0 && (
@@ -128,7 +118,7 @@ function BatchUploadTab({ speakers, refreshSpeakers }) {
                   <strong>{row.file.name}</strong>
                   {row.parsed ? (
                     <p>
-                      Speaker: {row.parsed.speakerName} {row.existingSpeaker ? '(existing)' : '(new)'} · {row.parsed.gender} · {row.parsed.language} · {row.parsed.emotion}
+                      Name: {row.parsed.speakerName} · {row.parsed.gender} · {row.parsed.language} · {row.parsed.emotion}
                     </p>
                   ) : (
                     <p>Could not parse filename -- expected 4 parts separated by "-".</p>
@@ -211,9 +201,9 @@ function SpeakersTab({ speakers, refreshSpeakers }) {
 }
 
 // ============================================================
-// TAB 3 -- Emotion Samples table (edit/delete gampang)
+// TAB 3 -- Emotion Voices table (katalog mandiri, edit/delete gampang)
 // ============================================================
-function EmotionSamplesTab({ speakers }) {
+function EmotionSamplesTab() {
   const [samples, setSamples] = useState([]);
   const [loading, setLoading] = useState(true);
   const [editingId, setEditingId] = useState(null);
@@ -228,11 +218,14 @@ function EmotionSamplesTab({ speakers }) {
 
   useEffect(() => { fetchSamples(); }, []);
 
-  const speakerLabel = (speakerId) => speakers.find((s) => s.$id === speakerId)?.label || speakerId;
-
   const startEdit = (sample) => {
     setEditingId(sample.$id);
-    setEditForm({ emotion: sample.emotion || '', speaker_id: sample.speaker_id || '' });
+    setEditForm({
+      name: sample.name || '',
+      gender: sample.gender || '',
+      language: sample.language || '',
+      emotion: sample.emotion || '',
+    });
   };
 
   const saveEdit = async () => {
@@ -242,7 +235,7 @@ function EmotionSamplesTab({ speakers }) {
   };
 
   const handleDelete = async (sample) => {
-    if (!window.confirm('Delete this emotion sample? This cannot be undone.')) return;
+    if (!window.confirm('Delete this emotion voice? This cannot be undone.')) return;
     await databases.deleteDocument(DATABASE_ID, EMOTION_SAMPLES_COLLECTION_ID, sample.$id);
     fetchSamples();
   };
@@ -251,20 +244,21 @@ function EmotionSamplesTab({ speakers }) {
 
   return (
     <div className="admin-upload-card">
-      <h2>Emotion Samples ({samples.length})</h2>
+      <h2>Emotion Voices ({samples.length})</h2>
       <div className="admin-table">
         <div className="admin-table-row admin-table-head">
-          <span>Speaker</span><span>Emotion</span><span>Audio</span><span></span>
+          <span>Name</span><span>Gender / Language</span><span>Emotion</span><span></span>
         </div>
         {samples.map((s) => (
           <div className="admin-table-row" key={s.$id}>
             {editingId === s.$id ? (
               <>
-                <select value={editForm.speaker_id} onChange={(e) => setEditForm({ ...editForm, speaker_id: e.target.value })}>
-                  {speakers.map((sp) => <option key={sp.$id} value={sp.$id}>{sp.label}</option>)}
-                </select>
+                <input value={editForm.name} onChange={(e) => setEditForm({ ...editForm, name: e.target.value })} />
+                <div style={{ display: 'flex', gap: 6 }}>
+                  <input value={editForm.gender} onChange={(e) => setEditForm({ ...editForm, gender: e.target.value })} />
+                  <input value={editForm.language} onChange={(e) => setEditForm({ ...editForm, language: e.target.value })} />
+                </div>
                 <input value={editForm.emotion} onChange={(e) => setEditForm({ ...editForm, emotion: e.target.value })} />
-                <span />
                 <div className="admin-table-actions">
                   <button onClick={saveEdit}>Save</button>
                   <button onClick={() => setEditingId(null)}>Cancel</button>
@@ -272,10 +266,11 @@ function EmotionSamplesTab({ speakers }) {
               </>
             ) : (
               <>
-                <span>{speakerLabel(s.speaker_id)}</span>
+                <span>{s.name}</span>
+                <span>{s.gender} · {s.language}</span>
                 <span>{s.emotion}</span>
-                <audio controls src={s.audio_url} style={{ height: 28, maxWidth: 160 }} />
                 <div className="admin-table-actions">
+                  <audio controls src={s.audio_url} style={{ height: 28, maxWidth: 120 }} />
                   <button onClick={() => startEdit(s)}>Edit</button>
                   <button className="admin-delete-btn" onClick={() => handleDelete(s)}>Delete</button>
                 </div>
@@ -369,9 +364,9 @@ export default function AdminDataManager() {
         <button className={activeTab === 'emotions' ? 'admin-tab-active' : ''} onClick={() => setActiveTab('emotions')}>Emotion Samples</button>
       </div>
 
-      {activeTab === 'upload' && <BatchUploadTab speakers={speakers} refreshSpeakers={refreshSpeakers} />}
+      {activeTab === 'upload' && <BatchUploadTab />}
       {activeTab === 'speakers' && <SpeakersTab speakers={speakers} refreshSpeakers={refreshSpeakers} />}
-      {activeTab === 'emotions' && <EmotionSamplesTab speakers={speakers} />}
+      {activeTab === 'emotions' && <EmotionSamplesTab />}
     </div>
   );
 }
