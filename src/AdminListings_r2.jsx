@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
-import { account, databases, storage, ID, Query, DATABASE_ID, VOICE_LISTINGS_COLLECTION_ID, RECORDING_UPLOAD_BUCKET_ID } from './appwriteConfig';
+import { account, databases, client, ID, Query, DATABASE_ID, VOICE_LISTINGS_COLLECTION_ID, UPLOAD_TO_R2_FUNCTION_ID } from './appwriteConfig';
+import { Functions } from 'appwrite';
 import './AdminListings.css';
 
 export default function AdminListings() {
@@ -79,6 +80,22 @@ export default function AdminListings() {
     setIsLoggedIn(false);
   };
 
+  // 🔧 Convert File jadi base64 -- dikirim ke Function upload-to-r2 lewat
+  // JSON body (Appwrite Function execution nerima body sebagai string,
+  // gak bisa multipart/binary langsung).
+  const fileToBase64 = (file) =>
+    new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        // readAsDataURL hasilnya "data:audio/mpeg;base64,XXXXX" -- kita
+        // cuma butuh bagian base64-nya doang, buang prefix-nya.
+        const base64 = reader.result.split(',')[1];
+        resolve(base64);
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+
   const handleUpload = async (e) => {
     e.preventDefault();
     setFormError('');
@@ -89,10 +106,23 @@ export default function AdminListings() {
 
     setUploading(true);
     try {
-      // 1. Upload file audio ke Storage
-      const uploadedFile = await storage.createFile(RECORDING_UPLOAD_BUCKET_ID, ID.unique(), audioFile);
+      // 1. Upload file audio ke Cloudflare R2 lewat Function perantara --
+      // kredensial R2 gak pernah nyentuh browser sama sekali.
+      const fileBase64 = await fileToBase64(audioFile);
+      const functions = new Functions(client);
+      const execution = await functions.createExecution(
+        UPLOAD_TO_R2_FUNCTION_ID,
+        JSON.stringify({
+          action: 'upload',
+          fileBase64,
+          fileName: audioFile.name,
+          mimeType: audioFile.type,
+        })
+      );
+      const result = JSON.parse(execution.responseBody || '{}');
+      if (!result.success) throw new Error(result.error || 'Failed to upload audio to R2.');
 
-      // 2. Bikin dokumen listing, nunjuk ke file yang barusan di-upload
+      // 2. Bikin dokumen listing, nunjuk ke URL R2 yang barusan di-upload
       // 🏷️ Normalize tags -- trim tiap tag, buang yang kosong, simpen balik
       // sebagai string dipisah koma (bukan array -- sengaja, biar gak kena
       // limitasi "array gak bisa diindex" kalau nanti mau filter by tag).
@@ -106,7 +136,8 @@ export default function AdminListings() {
         title: title.trim(),
         quote_text: quoteText.trim(),
         tags: normalizedTags,
-        audio_file_id: uploadedFile.$id,
+        audio_url: result.url,
+        audio_r2_key: result.key, // disimpen buat keperluan hapus file nanti
       });
 
       setFormSuccess('Listing published successfully.');
@@ -127,11 +158,17 @@ export default function AdminListings() {
     if (!window.confirm(`Delete "${listing.title}"? This cannot be undone.`)) return;
     try {
       await databases.deleteDocument(DATABASE_ID, VOICE_LISTINGS_COLLECTION_ID, listing.$id);
-      // File audio-nya juga dihapus, biar gak numpuk sampah di Storage.
-      try {
-        await storage.deleteFile(RECORDING_UPLOAD_BUCKET_ID, listing.audio_file_id);
-      } catch (e) {
-        console.warn('Listing document deleted, but failed to delete its audio file:', e);
+      // File audio-nya juga dihapus dari R2, biar gak numpuk sampah.
+      if (listing.audio_r2_key) {
+        try {
+          const functions = new Functions(client);
+          await functions.createExecution(
+            UPLOAD_TO_R2_FUNCTION_ID,
+            JSON.stringify({ action: 'delete', key: listing.audio_r2_key })
+          );
+        } catch (e) {
+          console.warn('Listing document deleted, but failed to delete its audio file from R2:', e);
+        }
       }
       setListings((prev) => prev.filter((l) => l.$id !== listing.$id));
     } catch (err) {
@@ -245,7 +282,7 @@ export default function AdminListings() {
                   )}
                   <audio
                     controls
-                    src={storage.getFileView(RECORDING_UPLOAD_BUCKET_ID, item.audio_file_id).toString()}
+                    src={item.audio_url}
                   />
                 </div>
                 <button className="admin-delete-btn" onClick={() => handleDelete(item)}>Delete</button>
