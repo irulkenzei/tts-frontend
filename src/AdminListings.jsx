@@ -13,6 +13,7 @@ export default function AdminListings() {
 
   const [title, setTitle] = useState('');
   const [quoteText, setQuoteText] = useState('');
+  const [tags, setTags] = useState('');
   const [audioFile, setAudioFile] = useState(null);
   const [uploading, setUploading] = useState(false);
   const [formError, setFormError] = useState('');
@@ -92,15 +93,26 @@ export default function AdminListings() {
       const uploadedFile = await storage.createFile(RECORDING_UPLOAD_BUCKET_ID, ID.unique(), audioFile);
 
       // 2. Bikin dokumen listing, nunjuk ke file yang barusan di-upload
+      // 🏷️ Normalize tags -- trim tiap tag, buang yang kosong, simpen balik
+      // sebagai string dipisah koma (bukan array -- sengaja, biar gak kena
+      // limitasi "array gak bisa diindex" kalau nanti mau filter by tag).
+      const normalizedTags = tags
+        .split(',')
+        .map((t) => t.trim())
+        .filter(Boolean)
+        .join(', ');
+
       await databases.createDocument(DATABASE_ID, VOICE_LISTINGS_COLLECTION_ID, ID.unique(), {
         title: title.trim(),
         quote_text: quoteText.trim(),
+        tags: normalizedTags,
         audio_file_id: uploadedFile.$id,
       });
 
       setFormSuccess('Listing published successfully.');
       setTitle('');
       setQuoteText('');
+      setTags('');
       setAudioFile(null);
       e.target.reset();
       fetchListings();
@@ -189,6 +201,15 @@ export default function AdminListings() {
           disabled={uploading}
         />
 
+        <label>Tags (comma-separated)</label>
+        <input
+          type="text"
+          value={tags}
+          onChange={(e) => setTags(e.target.value)}
+          placeholder="e.g. calm, narration, male voice"
+          disabled={uploading}
+        />
+
         <label>Audio file</label>
         <input
           type="file"
@@ -215,6 +236,13 @@ export default function AdminListings() {
                 <div className="admin-list-item-info">
                   <strong>{item.title}</strong>
                   {!!item.quote_text && <p>{item.quote_text}</p>}
+                  {!!item.tags && (
+                    <div className="admin-tags-row">
+                      {item.tags.split(',').map((t) => t.trim()).filter(Boolean).map((tag) => (
+                        <span className="admin-tag-pill" key={tag}>{tag}</span>
+                      ))}
+                    </div>
+                  )}
                   <audio
                     controls
                     src={storage.getFileView(RECORDING_UPLOAD_BUCKET_ID, item.audio_file_id).toString()}
