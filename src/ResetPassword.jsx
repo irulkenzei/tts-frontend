@@ -32,7 +32,11 @@ export default function ResetPassword() {
 
     setLoading(true);
     try {
-      await account.updateRecovery(userId, secret, password);
+      // 🐛 FIX: SDK appwrite v13 (versi yang dipakai project ini) butuh 4
+      // parameter posisional -- (userId, secret, password, passwordAgain)
+      // -- BUKAN 3. "passwordAgain" itu confirmPassword yang udah kita
+      // kumpulin di form, tinggal diteruskan sebagai argument ke-4.
+      await account.updateRecovery(userId, secret, password, confirmPassword);
       setSuccess(true);
     } catch (err) {
       setError(err?.message || 'Failed to reset password. The link may have expired -- please request a new one.');
