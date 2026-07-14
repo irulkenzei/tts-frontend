@@ -184,6 +184,23 @@
   margin-top: 4px;
 }
 
+.admin-tags-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 2px;
+}
+
+.admin-tag-pill {
+  background: rgba(0, 212, 255, 0.1);
+  border: 1px solid rgba(0, 212, 255, 0.25);
+  color: var(--primary-color, #00d4ff);
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 3px 10px;
+  border-radius: 999px;
+}
+
 .admin-delete-btn {
   background: rgba(255, 64, 129, 0.12) !important;
   color: #ff8fab !important;
