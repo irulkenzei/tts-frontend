@@ -62,7 +62,10 @@ export default function AdminListings() {
     setLoginError('');
     setLoginLoading(true);
     try {
-      await account.createEmailPasswordSession(email, password);
+      // 🐛 FIX: createEmailPasswordSession BELUM ADA di appwrite SDK v13
+      // (baru diperkenalkan di v1.5+) -- versi yang dipakai project ini
+      // masih pakai nama method LAMA: createEmailSession(email, password).
+      await account.createEmailSession(email, password);
       setIsLoggedIn(true);
     } catch (err) {
       setLoginError(err?.message || 'Login failed. Check your email and password.');
