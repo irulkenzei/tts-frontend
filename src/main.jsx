@@ -21,7 +21,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(
 
         {/* Rute Terlindungi (Protected): Harus login/melewati pengecekan */}
         <Route element={<ProtectedRoute />}>
-          <Route path="/admin-emotions" element={<AdminDataManager />} />
+         
         </Route>
       </Routes>
     </BrowserRouter>
