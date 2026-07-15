@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { Client, Functions, Databases, Storage, ID, Query, Account } from 'appwrite';
+import { Client, Functions, Databases, Storage, Query, Account } from 'appwrite';
 import { segmentsToPlainText, segmentsToSrt, segmentsToVtt } from './subtitleUtils';
 import './App.css';
 import ChatBot from './components/ChatBot';
@@ -10,7 +10,7 @@ const APPWRITE_PROJECT_ID = '6a3a48a1003d333b0268';
 
 const client = new Client()
     .setEndpoint(APPWRITE_ENDPOINT)
-    .setProject(APPWRITE_PROJECT_ID); 
+    .setProject(APPWRITE_PROJECT_ID);
 
 const appwriteFunctions = new Functions(client);
 const databases = new Databases(client);
@@ -208,7 +208,7 @@ const TtsServer = () => {
           const newDoc = await databases.createDocument(
             DATABASE_ID,
             USER_STATS_COLLECTION_ID,
-            ID.unique(),
+            generateFileId(), // 🐛 FIX: ID.unique() (sentinel "unique()") ternyata gak konsisten di-substitusi server pas dipanggil SUPER AWAL setelah createAnonymousSession() -- generate ID sendiri di client, gak bergantung ke mekanisme substitusi server sama sekali.
             { user_id: currentUserId, generation_count: 0 }
           );
           setStatsDocId(newDoc.$id);
@@ -409,7 +409,7 @@ const TtsServer = () => {
       await databases.createDocument(
         DATABASE_ID,
         WEB_SPEAKERS_COLLECTION_ID,
-        ID.unique(),
+        generateFileId(),
         {
           user_id: userId,
           name: cloneVoiceName.trim().substring(0, 255),
@@ -586,7 +586,7 @@ const TtsServer = () => {
           await databases.createDocument(
             DATABASE_ID,
             MUSIC_LIBRARY_COLLECTION_ID,
-            ID.unique(),
+            generateFileId(),
             { user_id: userId, file_hash: fileHash, file_name: file.name, sample_url: fileUrl }
           );
         } catch (saveHashErr) {
@@ -668,7 +668,7 @@ const TtsServer = () => {
       setIsUploadingVideo(false);
       setIsTranscribing(true);
 
-      const requestId = ID.unique();
+      const requestId = generateFileId();
       await databases.createDocument(DATABASE_ID, SUBTITLE_JOBS_COLLECTION_ID, requestId, {
         user_id: userId,
         status: 'pending',
@@ -775,7 +775,7 @@ const TtsServer = () => {
       setIsUploadingDoc(false);
       setIsConverting(true);
 
-      const requestId = ID.unique();
+      const requestId = generateFileId();
       const title = convertSourceFile.name.replace(/\.[^/.]+$/, '');
       await databases.createDocument(DATABASE_ID, CONVERT_JOBS_COLLECTION_ID, requestId, {
         status: 'pending',
@@ -954,7 +954,7 @@ const TtsServer = () => {
     setCurrentJobId(null);
     setGeneratedAudioBlob(null);
 
-    const requestId = ID.unique();
+    const requestId = generateFileId();
     payload.requestId = requestId;
 
     setElapsedMs(0);
@@ -1106,12 +1106,12 @@ const TtsServer = () => {
           className="pause-select"
         >
           <option value="" disabled>⏸ Pause</option>
-          <option value="0.5">0.50s</option> 
-          <option value="1">1.00s</option>
-          <option value="2">2.00s</option>
-          <option value="3">3.00s</option>
-          <option value="4">4.00s</option>
-          <option value="5">5.00s</option>
+          <option value="0.5">0.5s</option>
+          <option value="1">1s</option>
+          <option value="2">2s</option>
+          <option value="3">3s</option>
+          <option value="4">4s</option>
+          <option value="5">5s</option>
         </select>
         <button 
           type="button" 
@@ -1427,7 +1427,7 @@ const TtsServer = () => {
               </div>
             ) : mode === 'subtitle' ? (
               <div className="card">
-                <h2 className="card-title">🎬 Subtitle</h2>
+                <h2 className="card-title">🎬 Subtitle Generator</h2>
                 <p className="card-description">Upload a video (max {MAX_VIDEO_DURATION_SECONDS}s) and generate .srt or .vtt subtitle file.</p>
 
                 <div className="setting-group">
