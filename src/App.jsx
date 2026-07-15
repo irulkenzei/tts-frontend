@@ -18,6 +18,17 @@ const storage = new Storage(client);
 const account = new Account(client);
 const FUNCTION_ID = '6a4bedd10009fe338821';
 
+// 🐛 FIX: storage.createFile() dengan fileId = ID.unique() (literal string
+// "unique()") TERBUKTI kadang gagal di-substitusi server dengan benar --
+// ini bug resmi yang udah dilaporkan ke Appwrite (khusus endpoint Storage,
+// server version 1.9.5 yang kepakai di project ini), beda dari
+// databases.createDocument() yang substitusi "unique()"-nya jalan normal.
+// Solusinya: generate ID unik sendiri di client buat SEMUA panggilan
+// storage.createFile(), jangan pakai ID.unique() lagi di situ.
+function generateFileId() {
+  return `f${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`;
+}
+
 // Database & Storage Configuration
 const DATABASE_ID = 'naratorai';
 const SPEAKERS_COLLECTION_ID = 'speakers';
@@ -349,7 +360,7 @@ const TtsServer = () => {
       const file = new File([recordedBlob], `web-recording-${Date.now()}.webm`, { type: 'audio/webm' });
       const uploadedFile = await storage.createFile(
         RECORDING_UPLOAD_BUCKET_ID,
-        ID.unique(),
+        generateFileId(),
         file
       );
       const fileUrl = `https://fra.cloud.appwrite.io/v1/storage/buckets/${RECORDING_UPLOAD_BUCKET_ID}/files/${uploadedFile.$id}/view?project=6a3a48a1003d333b0268`;
@@ -389,7 +400,7 @@ const TtsServer = () => {
       const file = new File([recordedBlob], `web-clone-${Date.now()}.webm`, { type: 'audio/webm' });
       const uploadedFile = await storage.createFile(
         RECORDING_UPLOAD_BUCKET_ID,
-        ID.unique(),
+        generateFileId(),
         file
       );
 
@@ -464,7 +475,7 @@ const TtsServer = () => {
       const renamedFile = new File([file], `web-${file.name}`, { type: file.type });
       const uploadedFile = await storage.createFile(
         RECORDING_UPLOAD_BUCKET_ID,
-        ID.unique(),
+        generateFileId(),
         renamedFile
       );
       const fileUrl = `https://fra.cloud.appwrite.io/v1/storage/buckets/${RECORDING_UPLOAD_BUCKET_ID}/files/${uploadedFile.$id}/view?project=6a3a48a1003d333b0268`;
@@ -564,7 +575,7 @@ const TtsServer = () => {
 
       const uploadedFile = await storage.createFile(
         RECORDING_UPLOAD_BUCKET_ID,
-        ID.unique(),
+        generateFileId(),
         renamedFile
       );
 
@@ -651,7 +662,7 @@ const TtsServer = () => {
       const renamedFile = new File([subtitleVideoFile], `web-video-${Date.now()}-${subtitleVideoFile.name}`, {
         type: subtitleVideoFile.type,
       });
-      const uploadedFile = await storage.createFile(RECORDING_UPLOAD_BUCKET_ID, ID.unique(), renamedFile);
+      const uploadedFile = await storage.createFile(RECORDING_UPLOAD_BUCKET_ID, generateFileId(), renamedFile);
       const videoUrl = `https://fra.cloud.appwrite.io/v1/storage/buckets/${RECORDING_UPLOAD_BUCKET_ID}/files/${uploadedFile.$id}/view?project=${APPWRITE_PROJECT_ID}`;
 
       setIsUploadingVideo(false);
@@ -758,7 +769,7 @@ const TtsServer = () => {
       const renamedFile = new File([convertSourceFile], `web-doc-${Date.now()}-${convertSourceFile.name}`, {
         type: convertSourceFile.type,
       });
-      const uploadedFile = await storage.createFile(RECORDING_UPLOAD_BUCKET_ID, ID.unique(), renamedFile);
+      const uploadedFile = await storage.createFile(RECORDING_UPLOAD_BUCKET_ID, generateFileId(), renamedFile);
       const sourceUrl = `https://fra.cloud.appwrite.io/v1/storage/buckets/${RECORDING_UPLOAD_BUCKET_ID}/files/${uploadedFile.$id}/view?project=${APPWRITE_PROJECT_ID}`;
 
       setIsUploadingDoc(false);
