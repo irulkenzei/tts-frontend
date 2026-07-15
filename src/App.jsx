@@ -1427,7 +1427,7 @@ const TtsServer = () => {
               </div>
             ) : mode === 'subtitle' ? (
               <div className="card">
-                <h2 className="card-title">🎬 Subtitle Generator</h2>
+                <h2 className="card-title">🎬 Subtitle</h2>
                 <p className="card-description">Upload a video (max {MAX_VIDEO_DURATION_SECONDS}s) and generate .srt or .vtt subtitle file.</p>
 
                 <div className="setting-group">
