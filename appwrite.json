@@ -1,0 +1,21 @@
+{
+  "projectId": "6a3a48a1003d333b0268",
+  "projectName": "Narator AI",
+  "hosting": [
+    {
+      "$id": "web-hosting",
+      "name": "Narator AI Web",
+      "provider": "appwrite",
+      "hostname": "naratorai.com",
+      "directory": "dist",
+      "errorDocument": "index.html",
+      "indexDocument": "index.html",
+      "rewrites": [
+        {
+          "source": "/**/*",
+          "destination": "/index.html"
+        }
+      ]
+    }
+  ]
+}
