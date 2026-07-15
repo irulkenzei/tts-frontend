@@ -7,7 +7,7 @@ import AdminListings from './AdminListings.jsx';
 import PublicVoiceListings from './PublicVoiceListings.jsx';
 import ResetPassword from './ResetPassword.jsx';
 import AdminDataManager from './AdminDataManager.jsx'; // Ini untuk admin-emotions
-//import ProtectedRoute from './components/ProtectedRoute'; 
+import ProtectedRoute from './components/ProtectedRoute'; 
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
@@ -21,7 +21,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(
 
         {/* Rute Terlindungi (Protected): Harus login/melewati pengecekan */}
         <Route element={<ProtectedRoute />}>
-         
+          <Route path="/admin-emotions" element={<AdminDataManager />} />
         </Route>
       </Routes>
     </BrowserRouter>
