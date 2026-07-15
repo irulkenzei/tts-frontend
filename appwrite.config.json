@@ -21,7 +21,7 @@
             "timeout": 15,
             "enabled": true,
             "logging": true,
-            "entrypoint": "src/main.js",
+            "entrypoint": "src/main.jsx",
             "commands": "npm install",
             "ignore": [
                 "node_modules",
