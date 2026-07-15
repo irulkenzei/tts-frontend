@@ -6,7 +6,7 @@ import AdminListings from './AdminListings.jsx'
 import PublicVoiceListings from './PublicVoiceListings.jsx'
 import ResetPassword from './ResetPassword.jsx'
 import AdminDataManager from './AdminDataManager.jsx'
-import ProtectedRoute from './components/ProtectedRoute'; /
+import ProtectedRoute from './components/ProtectedRoute';
 const path = window.location.pathname
 const RootComponent =
   path === '/admin' ? AdminListings
