@@ -53,6 +53,28 @@
   font-size: 0.85rem;
 }
 
+/* 🆕 Tabel Speakers punya 1 kolom tambahan (Tags) dibanding tabel lain */
+.admin-table-speakers .admin-table-row {
+  grid-template-columns: 1fr 0.7fr 1.2fr 1.3fr auto;
+}
+
+.admin-tags-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.admin-tag-pill {
+  background: rgba(0, 212, 255, 0.1);
+  border: 1px solid rgba(0, 212, 255, 0.25);
+  color: var(--primary-color, #00d4ff);
+  font-size: 0.68rem;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
 .admin-table-head {
   background: transparent;
   border: none;
