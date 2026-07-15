@@ -148,11 +148,31 @@ function SpeakersTab({ speakers, refreshSpeakers }) {
 
   const startEdit = (speaker) => {
     setEditingId(speaker.$id);
-    setEditForm({ label: speaker.label || '', gender: speaker.gender || '', description: speaker.description || '', value: speaker.value || '' });
+    setEditForm({
+      label: speaker.label || '',
+      gender: speaker.gender || '',
+      description: speaker.description || '',
+      value: speaker.value || '',
+      // 🏷️ tags itu Array attribute (BEDA dari voice_listings.tags yang
+      // String) -- ditampilin sebagai teks dipisah koma buat gampang
+      // diedit, tapi dipecah balik jadi array proper pas disimpan (bukan
+      // disimpen sebagai 1 string gabungan).
+      tagsText: Array.isArray(speaker.tags) ? speaker.tags.join(', ') : '',
+    });
   };
 
   const saveEdit = async () => {
-    await databases.updateDocument(DATABASE_ID, SPEAKERS_COLLECTION_ID, editingId, editForm);
+    const tags = editForm.tagsText
+      .split(',')
+      .map((t) => t.trim())
+      .filter(Boolean);
+    await databases.updateDocument(DATABASE_ID, SPEAKERS_COLLECTION_ID, editingId, {
+      label: editForm.label,
+      gender: editForm.gender,
+      description: editForm.description,
+      value: editForm.value,
+      tags, // array asli, bukan string gabungan
+    });
     setEditingId(null);
     refreshSpeakers();
   };
@@ -166,9 +186,9 @@ function SpeakersTab({ speakers, refreshSpeakers }) {
   return (
     <div className="admin-upload-card">
       <h2>Speakers ({speakers.length})</h2>
-      <div className="admin-table">
+      <div className="admin-table admin-table-speakers">
         <div className="admin-table-row admin-table-head">
-          <span>Label</span><span>Gender</span><span>Description</span><span></span>
+          <span>Label</span><span>Gender</span><span>Description</span><span>Tags</span><span></span>
         </div>
         {speakers.map((s) => (
           <div className="admin-table-row" key={s.$id}>
@@ -177,6 +197,11 @@ function SpeakersTab({ speakers, refreshSpeakers }) {
                 <input value={editForm.label} onChange={(e) => setEditForm({ ...editForm, label: e.target.value })} />
                 <input value={editForm.gender} onChange={(e) => setEditForm({ ...editForm, gender: e.target.value })} />
                 <input value={editForm.description} onChange={(e) => setEditForm({ ...editForm, description: e.target.value })} />
+                <input
+                  value={editForm.tagsText}
+                  onChange={(e) => setEditForm({ ...editForm, tagsText: e.target.value })}
+                  placeholder="e.g. EXPRESSIVE, NARRATOR"
+                />
                 <div className="admin-table-actions">
                   <button onClick={saveEdit}>Save</button>
                   <button onClick={() => setEditingId(null)}>Cancel</button>
@@ -187,6 +212,17 @@ function SpeakersTab({ speakers, refreshSpeakers }) {
                 <span>{s.label}</span>
                 <span>{s.gender}</span>
                 <span>{s.description}</span>
+                <span>
+                  {Array.isArray(s.tags) && s.tags.length > 0 ? (
+                    <div className="admin-tags-row">
+                      {s.tags.map((tag) => (
+                        <span className="admin-tag-pill" key={tag}>{tag}</span>
+                      ))}
+                    </div>
+                  ) : (
+                    <span style={{ color: 'var(--text-secondary, #b0bec5)', fontSize: '0.75rem' }}>--</span>
+                  )}
+                </span>
                 <div className="admin-table-actions">
                   <button onClick={() => startEdit(s)}>Edit</button>
                   <button className="admin-delete-btn" onClick={() => handleDelete(s)}>Delete</button>
