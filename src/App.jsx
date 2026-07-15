@@ -10,7 +10,7 @@ const APPWRITE_PROJECT_ID = '6a3a48a1003d333b0268';
 
 const client = new Client()
     .setEndpoint(APPWRITE_ENDPOINT)
-    .setProject(APPWRITE_PROJECT_ID);
+    .setProject(APPWRITE_PROJECT_ID); 
 
 const appwriteFunctions = new Functions(client);
 const databases = new Databases(client);
