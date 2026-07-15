@@ -7,7 +7,7 @@ import ResetPassword from './ResetPassword.jsx'
 import AdminDataManager from './AdminDataManager.jsx'
 const path = window.location.pathname
 const RootComponent =
-  path === '/adminku' ? AdminListings
+  path === '/admin' ? AdminListings
   : path === '/voices' ? PublicVoiceListings
   : path === '/reset-password' ? ResetPassword
   : path === '/admin-emotions' ? AdminDataManager
