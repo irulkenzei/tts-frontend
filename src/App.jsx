@@ -1106,12 +1106,12 @@ const TtsServer = () => {
           className="pause-select"
         >
           <option value="" disabled>⏸ Pause</option>
-          <option value="0.5">0.5s</option>
-          <option value="1">1s</option>
-          <option value="2">2s</option>
-          <option value="3">3s</option>
-          <option value="4">4s</option>
-          <option value="5">5s</option>
+          <option value="0.5">0.50s</option> 
+          <option value="1">1.00s</option>
+          <option value="2">2.00s</option>
+          <option value="3">3.00s</option>
+          <option value="4">4.00s</option>
+          <option value="5">5.00s</option>
         </select>
         <button 
           type="button" 
