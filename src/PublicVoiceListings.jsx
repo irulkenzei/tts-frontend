@@ -146,13 +146,12 @@ export default function PublicVoiceListings() {
       <footer className="app-brand-footer">
         <span className="footer-brand-text">Narrator AI</span>
         <div className="footer-brand-links">
-          <a href="#pricing">Pricing</a>
-          <a href="#faq">FAQ</a>
-          <a href="#troubleshoot">Troubleshoot</a>
-          <a href="#contact">Contact</a>
-          <a href="#request">Request a Feature</a>
-          <a href="#privacy">Privacy Policy</a>
-          <a href="#terms">Terms</a>
+          <a href="/faq">FAQ</a>
+          <a href="/troubleshoot">Troubleshoot</a>
+          <a href="/contact">Contact</a>
+          <a href="/request-feature">Request a Feature</a>
+          <a href="/privacy-policy">Privacy Policy</a>
+          <a href="/terms-of-service">Terms</a>
         </div>
       </footer>
     </div>
