@@ -149,3 +149,102 @@
   border-color: var(--primary-color, #00d4ff);
   color: var(--primary-color, #00d4ff);
 }
+/* Layout Wrapper Utama */
+.voices-page-wrapper {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  background: var(--bg-primary, #0a0e27);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+/* Penyesuaian main shell agar flex-grow mengisi sisa space */
+.voices-shell {
+  flex: 1;
+  padding: 40px 20px 80px;
+}
+
+/* Styling Header Utama (NarratorAI) */
+.app-brand-header {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 20px 20px;
+  background: transparent;
+}
+
+.app-brand-logo-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+
+.app-brand-logo-icon {
+  color: #00d4ff;
+}
+
+.app-brand-logo-text {
+  font-size: 2.2rem;
+  font-weight: 800;
+  color: #3b82f6; /* Warna biru cerah utama */
+  letter-spacing: -0.5px;
+}
+
+.app-brand-subtitle {
+  font-size: 0.95rem;
+  color: var(--text-secondary, #b0bec5);
+  margin: 0;
+  opacity: 0.8;
+}
+
+/* Styling Footer Utama */
+.app-brand-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 20px;
+  padding: 24px 40px;
+  background: #060919; /* Lebih gelap dari main bg */
+  border-top: 1px solid rgba(38, 50, 56, 0.5);
+}
+
+.footer-brand-text {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--text-primary, #fff);
+  opacity: 0.9;
+}
+
+.footer-brand-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 24px;
+}
+
+.footer-brand-links a {
+  color: var(--text-secondary, #b0bec5);
+  font-size: 0.85rem;
+  text-decoration: none;
+  transition: color 0.2s ease;
+}
+
+.footer-brand-links a:hover {
+  color: #00d4ff; /* Glow biru saat hover */
+}
+
+/* Responsive Footer untuk Layar Kecil/HP */
+@media (max-width: 600px) {
+  .app-brand-footer {
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    padding: 24px 20px;
+  }
+  .footer-brand-links {
+    justify-content: center;
+    gap: 16px;
+  }
+}
