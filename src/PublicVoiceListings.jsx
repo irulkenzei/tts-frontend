@@ -107,7 +107,7 @@ export default function PublicVoiceListings() {
   }, []);
 
   return (
- <div className="voices-page-wrapper">
+  <div className="voices-page-wrapper">
       {/* ─── APP HEADER ─── */}
       <header className="app-brand-header">
         <div className="app-brand-logo-row">
@@ -119,27 +119,28 @@ export default function PublicVoiceListings() {
         </div>
         <p className="app-brand-subtitle">Powerful AI Text-to-Speech Platform</p>
       </header>
-        
-     {/* ─── MAIN CONTENT ─── */}
-      <main className="voices-shell">
-      <header className="voices-header">
-        <h1>Voice Listings</h1>
-        <p>A showcase of voiceovers narrated by Narator AI.</p>
-      </header>
 
-      {loading ? (
-        <p className="voices-loading">Loading voices…</p>
-      ) : error ? (
-        <p className="voices-error">{error}</p>
-      ) : listings.length === 0 ? (
-        <p className="voices-empty">No voices published yet. Check back soon.</p>
-      ) : (
-        <div className="voices-grid">
-          {listings.map((listing) => (
-            <ListingCard key={listing.$id} listing={listing} />
-          ))}
-        </div>
-   </main>
+      {/* ─── MAIN CONTENT ─── */}
+      <main className="voices-shell">
+        <header className="voices-header">
+          <h1>Voice Listings</h1>
+          <p>A showcase of voiceovers narrated by Narator AI.</p>
+        </header>
+
+        {loading ? (
+          <p className="voices-loading">Loading voices…</p>
+        ) : error ? (
+          <p className="voices-error">{error}</p>
+        ) : listings.length === 0 ? (
+          <p className="voices-empty">No voices published yet. Check back soon.</p>
+        ) : (
+          <div className="voices-grid">
+            {listings.map((listing) => (
+              <ListingCard key={listing.$id} listing={listing} />
+            ))}
+          </div>
+        )}
+      </main>
 
       {/* ─── APP FOOTER ─── */}
       <footer className="app-brand-footer">
@@ -154,8 +155,6 @@ export default function PublicVoiceListings() {
           <a href="#terms">Terms</a>
         </div>
       </footer>
-        
-      )}
     </div>
   );
 }
