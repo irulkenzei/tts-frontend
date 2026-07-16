@@ -133,8 +133,9 @@ export default function PublicVoiceListings() {
 
       {/* ─── APP FOOTER ─── */}
       <footer className="app-brand-footer">
-        <span className="footer-brand-text">Narrator AI</span>
+        <span className="footer-brand-text"><a href="/">Narrator AI</a></span>
         <div className="footer-brand-links">
+          <a href="/">Home</a>
           <a href="/faq">FAQ</a>
           <a href="/troubleshoot">Troubleshoot</a>
           <a href="/contact">Contact</a>
