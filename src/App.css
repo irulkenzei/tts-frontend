@@ -66,12 +66,63 @@ body {
 }
 
 /* ============================================
+   CONTENT WRAPPER (Ubah jadi 3 Kolom)
+   ============================================ */
+.content-wrapper {
+  display: grid;
+  /* Kolom: 1 bagian kiri, 2 bagian tengah, 1 bagian kanan */
+  grid-template-columns: 1fr 2fr 1fr; 
+  gap: 24px;
+  align-items: start;
+}
+
+@media (max-width: 1024px) {
+  .content-wrapper {
+    grid-template-columns: 1fr; /* Jadi 1 kolom bersusun di layar kecil */
+  }
+}
+
+/* ============================================
+   CARD STYLES (Tambahan Efek Glassmorphism)
+   ============================================ */
+.card {
+  /* Background biru gelap semi-transparan */
+  background: rgba(20, 24, 41, 0.4); 
+  /* Efek blur kaca pada elemen di belakangnya */
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  /* Border tipis keputihan */
+  border: 1px solid rgba(255, 255, 255, 0.08); 
+  border-radius: var(--radius-lg);
+  padding: 24px;
+  /* Bayangan lembut */
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3); 
+  transition: var(--transition);
+}
+
+.card:hover {
+  border-color: rgba(255, 255, 255, 0.2);
+  box-shadow: 0 8px 32px 0 rgba(0, 212, 255, 0.15);
+}
+
+/* Opsional: Beri efek glass juga pada menu navigasi */
+.mode-btn {
+  background: rgba(20, 24, 41, 0.5);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+/* ============================================
    APP CONTAINER
    ============================================ */
 
 .app-container {
   min-height: 100vh;
-  background: var(--bg-primary);
+  /* Tambahkan gradient halus agar efek blur kaca terlihat */
+  background: radial-gradient(circle at 15% 50%, rgba(91, 91, 246, 0.15), transparent 40%),
+              radial-gradient(circle at 85% 30%, rgba(0, 212, 255, 0.15), transparent 40%), 
+              var(--bg-primary);
   padding: 0;
   margin: 0;
 }
