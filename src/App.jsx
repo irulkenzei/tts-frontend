@@ -1546,6 +1546,7 @@ const TtsServer = () => {
       <footer className="site-footer">
         <p>Narator AI</p>
         <nav className="footer-links" aria-label="Support navigation">
+          <a href="/voices">Voices Listing</a>
           <a href="/faq">FAQ</a>
           <a href="/troubleshoot">Troubleshoot</a>
           <a href="/contact">Contact</a>
