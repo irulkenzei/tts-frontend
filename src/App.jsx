@@ -18,13 +18,6 @@ const storage = new Storage(client);
 const account = new Account(client);
 const FUNCTION_ID = '6a4bedd10009fe338821';
 
-// 🐛 FIX: storage.createFile() dengan fileId = ID.unique() (literal string
-// "unique()") TERBUKTI kadang gagal di-substitusi server dengan benar --
-// ini bug resmi yang udah dilaporkan ke Appwrite (khusus endpoint Storage,
-// server version 1.9.5 yang kepakai di project ini), beda dari
-// databases.createDocument() yang substitusi "unique()"-nya jalan normal.
-// Solusinya: generate ID unik sendiri di client buat SEMUA panggilan
-// storage.createFile(), jangan pakai ID.unique() lagi di situ.
 function generateFileId() {
   return `f${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`;
 }
@@ -208,7 +201,7 @@ const TtsServer = () => {
           const newDoc = await databases.createDocument(
             DATABASE_ID,
             USER_STATS_COLLECTION_ID,
-            generateFileId(), // 🐛 FIX: ID.unique() (sentinel "unique()") ternyata gak konsisten di-substitusi server pas dipanggil SUPER AWAL setelah createAnonymousSession() -- generate ID sendiri di client, gak bergantung ke mekanisme substitusi server sama sekali.
+            generateFileId(),
             { user_id: currentUserId, generation_count: 0 }
           );
           setStatsDocId(newDoc.$id);
@@ -1134,105 +1127,19 @@ const TtsServer = () => {
 
       <header className="app-header">
         <div className="header-content">
-          <h1 className="app-title">🎙️ Narrator AI</h1>
+          <h1 className="app-title">🎙️ NarratorAI</h1>
           <p className="app-subtitle">Powerful AI Text-to-Speech Platform</p>
         </div>
       </header>
 
+      {/* --- START OF RESTRUCTURED MAIN --- */}
       <main className="app-main">
-        <nav className="mode-nav">
-          <button 
-            onClick={() => setMode('single')}
-            className={`mode-btn ${mode === 'single' ? 'active' : ''}`}
-          >
-            <span className="mode-icon">🎙️</span>
-            <span className="mode-text">Single Voice</span>
-          </button>
-          <button 
-            onClick={() => setMode('dialogue')}
-            className={`mode-btn ${mode === 'dialogue' ? 'active' : ''}`}
-          >
-            <span className="mode-icon">🎭</span>
-            <span className="mode-text">Dialogue</span>
-          </button>
-          <button 
-            onClick={() => setMode('subtitle')}
-            className={`mode-btn ${mode === 'subtitle' ? 'active' : ''}`}
-          >
-            <span className="mode-icon">🎬</span>
-            <span className="mode-text">Subtitle</span>
-          </button>
-          <button 
-            onClick={() => setMode('convert')}
-            className={`mode-btn ${mode === 'convert' ? 'active' : ''}`}
-          >
-            <span className="mode-icon">📄</span>
-            <span className="mode-text">Document</span>
-          </button>
-        </nav>
-
         <div className="content-wrapper">
-          <aside className="settings-sidebar">
-            <div className="card settings-card">
-              <h3 className="card-title">⚙️ Voice Settings</h3>
-              
-              <div className="setting-group">
-                <label>🌐 Language</label>
-                <select value={language} onChange={(e) => setLanguage(e.target.value)} className="form-select">
-                  <option value="en">English</option>
-                  <option value="es">Spanish</option>
-                  <option value="fr">French</option>
-                  <option value="de">German</option>
-                  <option value="it">Italian</option>
-                  <option value="pt">Portuguese</option>
-                  <option value="pl">Polish</option>
-                  <option value="tr">Turkish</option>
-                  <option value="ru">Russian</option>
-                  <option value="nl">Dutch</option>
-                  <option value="cs">Czech</option>
-                  <option value="ar">Arabic</option>
-                  <option value="zh-cn">Chinese</option>
-                  <option value="ja">Japanese</option>
-                  <option value="hu">Hungarian</option>
-                  <option value="ko">Korean</option>
-                  <option value="hi">Hindi</option>
-                </select>
-              </div>
-
-              <div className="setting-group">
-                <label>⚡ Speed: <strong>{speed}</strong></label>
-                <input type="range" min="0.5" max="2.0" step="0.05" value={speed} onChange={(e) => setSpeed(e.target.value)} className="form-range"/>
-                <small>0.5 (slow) — 2.0 (fast)</small>
-              </div>
-
-              <div className="setting-group">
-                <label>🎭 Expressiveness: <strong>{temperature}</strong></label>
-                <input type="range" min="0.1" max="1.0" step="0.05" value={temperature} onChange={(e) => setTemperature(e.target.value)} className="form-range"/>
-                <small>0.1 (stable) — 1.0 (expressive)</small>
-              </div>
-
-              <div className="setting-group">
-                <label>⏸️ Comma Pause: <strong>{commaPauseMs}ms</strong></label>
-                <input type="range" min="0" max="1500" step="50" value={commaPauseMs} onChange={(e) => setCommaPauseMs(parseInt(e.target.value, 10))} className="form-range"/>
-              </div>
-
-              <div className="setting-group">
-                <label>⏸️ Period Pause: <strong>{periodPauseMs}ms</strong></label>
-                <input type="range" min="0" max="5000" step="50" value={periodPauseMs} onChange={(e) => setPeriodPauseMs(parseInt(e.target.value, 10))} className="form-range"/>
-              </div>
-
-              <div className="setting-group">
-                <label>💾 Output Format</label>
-                <select value={outputFormat} onChange={(e) => setOutputFormat(e.target.value)} className="form-select">
-                  <option value="wav">WAV</option>
-                  <option value="mp3">MP3</option>
-                  <option value="ogg">OGG</option>
-                  <option value="flac">FLAC</option>
-                  <option value="m4a">M4A</option>
-                </select>
-              </div>
-            </div>
-
+          
+          {/* ======================================= */}
+          {/* 1. KIRI: SELECT VOICE CARD                */}
+          {/* ======================================= */}
+          <aside className="sidebar-left">
             <div className="card">
               <h3 className="card-title">🎵 Select Voice</h3>
 
@@ -1333,7 +1240,7 @@ const TtsServer = () => {
               </div>
 
               {myClonedVoices.length > 0 && (
-                <div className="setting-group">
+                <div className="setting-group" style={{marginTop: '16px'}}>
                   <label>🧬 My Cloned Voices</label>
                   <select
                     value={selectedClonedVoiceId}
@@ -1389,7 +1296,43 @@ const TtsServer = () => {
             </div>
           </aside>
 
+          {/* ======================================= */}
+          {/* 2. TENGAH: MENU & MAIN FORM             */}
+          {/* ======================================= */}
           <section className="content-main">
+            
+            {/* Mode Nav dipindah ke dalam kolom tengah */}
+            <nav className="mode-nav">
+              <button 
+                onClick={() => setMode('single')}
+                className={`mode-btn ${mode === 'single' ? 'active' : ''}`}
+              >
+                <span className="mode-icon">🎙️</span>
+                <span className="mode-text">Single Voice</span>
+              </button>
+              <button 
+                onClick={() => setMode('dialogue')}
+                className={`mode-btn ${mode === 'dialogue' ? 'active' : ''}`}
+              >
+                <span className="mode-icon">🎭</span>
+                <span className="mode-text">Dialogue</span>
+              </button>
+              <button 
+                onClick={() => setMode('subtitle')}
+                className={`mode-btn ${mode === 'subtitle' ? 'active' : ''}`}
+              >
+                <span className="mode-icon">🎬</span>
+                <span className="mode-text">Subtitle</span>
+              </button>
+              <button 
+                onClick={() => setMode('convert')}
+                className={`mode-btn ${mode === 'convert' ? 'active' : ''}`}
+              >
+                <span className="mode-icon">📄</span>
+                <span className="mode-text">Document</span>
+              </button>
+            </nav>
+
             {mode === 'convert' ? (
               <div className="card">
                 <h2 className="card-title">📄 Document Converter</h2>
@@ -1536,13 +1479,76 @@ const TtsServer = () => {
               </div>
             )}
           </section>
+
+          {/* ======================================= */}
+          {/* 3. KANAN: VOICE SETTINGS CARD             */}
+          {/* ======================================= */}
+          <aside className="sidebar-right">
+            <div className="card settings-card">
+              <h3 className="card-title">⚙️ Voice Settings</h3>
+              
+              <div className="setting-group">
+                <label>🌐 Language</label>
+                <select value={language} onChange={(e) => setLanguage(e.target.value)} className="form-select">
+                  <option value="en">English</option>
+                  <option value="es">Spanish</option>
+                  <option value="fr">French</option>
+                  <option value="de">German</option>
+                  <option value="it">Italian</option>
+                  <option value="pt">Portuguese</option>
+                  <option value="pl">Polish</option>
+                  <option value="tr">Turkish</option>
+                  <option value="ru">Russian</option>
+                  <option value="nl">Dutch</option>
+                  <option value="cs">Czech</option>
+                  <option value="ar">Arabic</option>
+                  <option value="zh-cn">Chinese</option>
+                  <option value="ja">Japanese</option>
+                  <option value="hu">Hungarian</option>
+                  <option value="ko">Korean</option>
+                  <option value="hi">Hindi</option>
+                </select>
+              </div>
+
+              <div className="setting-group">
+                <label>⚡ Speed: <strong>{speed}</strong></label>
+                <input type="range" min="0.5" max="2.0" step="0.05" value={speed} onChange={(e) => setSpeed(e.target.value)} className="form-range"/>
+                <small>0.5 (slow) — 2.0 (fast)</small>
+              </div>
+
+              <div className="setting-group">
+                <label>🎭 Expressiveness: <strong>{temperature}</strong></label>
+                <input type="range" min="0.1" max="1.0" step="0.05" value={temperature} onChange={(e) => setTemperature(e.target.value)} className="form-range"/>
+                <small>0.1 (stable) — 1.0 (expressive)</small>
+              </div>
+
+              <div className="setting-group">
+                <label>⏸️ Comma Pause: <strong>{commaPauseMs}ms</strong></label>
+                <input type="range" min="0" max="1500" step="50" value={commaPauseMs} onChange={(e) => setCommaPauseMs(parseInt(e.target.value, 10))} className="form-range"/>
+              </div>
+
+              <div className="setting-group">
+                <label>⏸️ Period Pause: <strong>{periodPauseMs}ms</strong></label>
+                <input type="range" min="0" max="5000" step="50" value={periodPauseMs} onChange={(e) => setPeriodPauseMs(parseInt(e.target.value, 10))} className="form-range"/>
+              </div>
+
+              <div className="setting-group">
+                <label>💾 Output Format</label>
+                <select value={outputFormat} onChange={(e) => setOutputFormat(e.target.value)} className="form-select">
+                  <option value="wav">WAV</option>
+                  <option value="mp3">MP3</option>
+                  <option value="ogg">OGG</option>
+                  <option value="flac">FLAC</option>
+                  <option value="m4a">M4A</option>
+                </select>
+              </div>
+            </div>
+          </aside>
+          
         </div>
       </main>
+      {/* --- END OF RESTRUCTURED MAIN --- */}
 
-      {/* 🦶 Footer -- link ke halaman statis di public/ (FAQ, Troubleshoot,
-          Contact, Request a Feature, Privacy Policy, Terms). Halaman ini
-          sengaja pakai <a> biasa (bukan React Router), karena itu memang
-          file HTML statis terpisah di public/, bukan komponen React. */}
       <footer className="site-footer">
         <p>Narator AI</p>
         <nav className="footer-links" aria-label="Support navigation">
@@ -1556,9 +1562,6 @@ const TtsServer = () => {
         </nav>
       </footer>
 
-      {/* 💬 Chatbot widget -- sebelumnya cuma di-import di baris atas
-          tapi gak pernah dirender di JSX manapun, makanya gak pernah
-          muncul di website walau build-nya sukses. */}
       <ChatBot />
     </div>
   );
