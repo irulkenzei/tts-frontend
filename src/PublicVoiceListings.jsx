@@ -107,7 +107,21 @@ export default function PublicVoiceListings() {
   }, []);
 
   return (
-    <div className="voices-shell">
+ <div className="voices-page-wrapper">
+      {/* ─── APP HEADER ─── */}
+      <header className="app-brand-header">
+        <div className="app-brand-logo-row">
+          {/* SVG Icon Microphone/Waveform siluet biru */}
+          <svg className="app-brand-logo-icon" width="32" height="32" viewBox="0 0 24 24" fill="#00d4ff">
+            <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5.3-3c0 3-2.54 5.1-5.3 5.1S6.7 14 6.7 11H5c0 3.41 2.72 6.23 6 6.72V21h2v-3.28c3.28-.48 6-3.3 6-6.72h-1.7z"/>
+          </svg>
+          <span className="app-brand-logo-text">NarratorAI</span>
+        </div>
+        <p className="app-brand-subtitle">Powerful AI Text-to-Speech Platform</p>
+      </header>
+        
+     {/* ─── MAIN CONTENT ─── */}
+      <main className="voices-shell">
       <header className="voices-header">
         <h1>Voice Listings</h1>
         <p>A showcase of voiceovers narrated by Narator AI.</p>
@@ -125,6 +139,22 @@ export default function PublicVoiceListings() {
             <ListingCard key={listing.$id} listing={listing} />
           ))}
         </div>
+   </main>
+
+      {/* ─── APP FOOTER ─── */}
+      <footer className="app-brand-footer">
+        <span className="footer-brand-text">Narrator AI</span>
+        <div className="footer-brand-links">
+          <a href="#pricing">Pricing</a>
+          <a href="#faq">FAQ</a>
+          <a href="#troubleshoot">Troubleshoot</a>
+          <a href="#contact">Contact</a>
+          <a href="#request">Request a Feature</a>
+          <a href="#privacy">Privacy Policy</a>
+          <a href="#terms">Terms</a>
+        </div>
+      </footer>
+        
       )}
     </div>
   );
