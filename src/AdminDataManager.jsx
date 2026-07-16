@@ -247,7 +247,7 @@ function EmotionSamplesTab() {
 
   const fetchSamples = async () => {
     setLoading(true);
-    const res = await databases.listDocuments(DATABASE_ID, EMOTION_SAMPLES_COLLECTION_ID, [Query.limit(200)]);
+    const res = await databases.listDocuments(DATABASE_ID, EMOTION_SAMPLES_COLLECTION_ID, [Query.limit(300)]);
     setSamples(res.documents);
     setLoading(false);
   };
@@ -347,7 +347,7 @@ export default function AdminDataManager() {
   }, []);
 
   const refreshSpeakers = async () => {
-    const res = await databases.listDocuments(DATABASE_ID, SPEAKERS_COLLECTION_ID, [Query.limit(200)]);
+    const res = await databases.listDocuments(DATABASE_ID, SPEAKERS_COLLECTION_ID, [Query.limit(300)]);
     setSpeakers(res.documents);
   };
 
