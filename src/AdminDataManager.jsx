@@ -9,6 +9,13 @@ import './AdminDataManager.css';
 
 const SPEAKERS_COLLECTION_ID = 'speakers';
 const EMOTION_SAMPLES_COLLECTION_ID = 'speaker_emotion_samples';
+// 🆕 Koleksi musik latar kurasi NaratorAI (dipakai di CreateScreen.tsx app
+// mobile, opsi "NaratorAI Collection" pas user nambahin background music)
+const BACKGROUND_MUSIC_COLLECTION_ID = 'background_music';
+// File background music di-upload ke folder R2 ini (lihat perubahan di
+// upload-to-r2/src/main.js -- folder sekarang ditentuin dari client,
+// bukan hardcode lagi), hasil akhirnya jadi https://media.naratorai.app/background-music/...
+const BACKGROUND_MUSIC_R2_FOLDER = 'background-music';
 const DEFAULT_AVATAR = 'https://media.naratorai.app/speaker-samples/avatar/texttospeech.webp';
 
 const client = new Client().setEndpoint(APPWRITE_ENDPOINT).setProject(APPWRITE_PROJECT_ID);
@@ -247,7 +254,7 @@ function EmotionSamplesTab() {
 
   const fetchSamples = async () => {
     setLoading(true);
-    const res = await databases.listDocuments(DATABASE_ID, EMOTION_SAMPLES_COLLECTION_ID, [Query.limit(500)]);
+    const res = await databases.listDocuments(DATABASE_ID, EMOTION_SAMPLES_COLLECTION_ID, [Query.limit(300)]);
     setSamples(res.documents);
     setLoading(false);
   };
@@ -320,8 +327,214 @@ function EmotionSamplesTab() {
 }
 
 // ============================================================
-// MAIN -- login gate + tab switcher
+// TAB 4 -- Background Music (upload + kelola, 1 tab gabungan)
+// ------------------------------------------------------------
+// Skema: title / audio_url / is_pro. File di-upload ke folder R2
+// "background-music/" (lihat BACKGROUND_MUSIC_R2_FOLDER), hasilnya jadi
+// https://media.naratorai.app/background-music/{timestamp}-{filename}.
+//
+// ⚠️ Tombol Delete di sini cuma hapus RECORD DATABASE-nya, BUKAN file
+// fisiknya di R2 (skema collection yang diminta cuma title/audio_url/
+// is_pro -- gak nyimpen R2 key-nya, jadi gak ada cara bersih buat manggil
+// action 'delete' di upload-to-r2 dari sini). File lama bakal nganggur di
+// R2 tapi gak nongol lagi di app. Kalau nanti mau bener-bener kehapus dari
+// R2 juga, kasih tau -- tinggal tambah 1 attribute lagi (`r2_key`) di
+// collection ini.
 // ============================================================
+function BackgroundMusicTab() {
+  const [rows, setRows] = useState([]);
+  const [uploading, setUploading] = useState(false);
+
+  const [tracks, setTracks] = useState([]);
+  const [loadingTracks, setLoadingTracks] = useState(true);
+  const [editingId, setEditingId] = useState(null);
+  const [editForm, setEditForm] = useState({});
+
+  const fetchTracks = async () => {
+    setLoadingTracks(true);
+    const res = await databases.listDocuments(DATABASE_ID, BACKGROUND_MUSIC_COLLECTION_ID, [Query.limit(300)]);
+    setTracks(res.documents);
+    setLoadingTracks(false);
+  };
+
+  useEffect(() => { fetchTracks(); }, []);
+
+  const handleFilesSelected = (e) => {
+    const files = Array.from(e.target.files || []);
+    const newRows = files.map((file) => ({
+      file,
+      // Default title dari nama file (buang ekstensi, ganti dash/underscore
+      // jadi spasi) -- admin masih bisa edit manual sebelum upload.
+      title: file.name.replace(/\.(mp3|wav|m4a|ogg)$/i, '').replace(/[-_]+/g, ' ').trim(),
+      isPro: false,
+      status: 'ready',
+      error: null,
+    }));
+    setRows(newRows);
+  };
+
+  const updateRow = (index, patch) => {
+    setRows((prev) => prev.map((r, i) => (i === index ? { ...r, ...patch } : r)));
+  };
+
+  const handleUploadAll = async () => {
+    setUploading(true);
+    const functions = new Functions(client);
+
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i];
+      if (row.status !== 'ready') continue;
+      if (!row.title.trim()) {
+        updateRow(i, { status: 'error', error: 'Title cannot be empty.' });
+        continue;
+      }
+
+      updateRow(i, { status: 'uploading' });
+      try {
+        const fileBase64 = await fileToBase64(row.file);
+        const execution = await functions.createExecution(
+          UPLOAD_TO_R2_FUNCTION_ID,
+          JSON.stringify({
+            action: 'upload',
+            fileBase64,
+            fileName: row.file.name,
+            mimeType: row.file.type,
+            folder: BACKGROUND_MUSIC_R2_FOLDER,
+          })
+        );
+        const result = JSON.parse(execution.responseBody || '{}');
+        if (!result.success) throw new Error(result.error || 'Upload to R2 failed.');
+
+        await databases.createDocument(DATABASE_ID, BACKGROUND_MUSIC_COLLECTION_ID, ID.unique(), {
+          title: row.title.trim(),
+          audio_url: result.url,
+          is_pro: row.isPro,
+        });
+
+        updateRow(i, { status: 'done' });
+      } catch (err) {
+        updateRow(i, { status: 'error', error: err?.message || 'Upload failed.' });
+      }
+    }
+    setUploading(false);
+    fetchTracks();
+  };
+
+  const startEdit = (track) => {
+    setEditingId(track.$id);
+    setEditForm({ title: track.title || '', is_pro: !!track.is_pro });
+  };
+
+  const saveEdit = async () => {
+    await databases.updateDocument(DATABASE_ID, BACKGROUND_MUSIC_COLLECTION_ID, editingId, {
+      title: editForm.title,
+      is_pro: editForm.is_pro,
+    });
+    setEditingId(null);
+    fetchTracks();
+  };
+
+  const handleDelete = async (track) => {
+    if (!window.confirm(`Delete "${track.title}" from the database? (The R2 file itself will stay, see note above.)`)) return;
+    await databases.deleteDocument(DATABASE_ID, BACKGROUND_MUSIC_COLLECTION_ID, track.$id);
+    fetchTracks();
+  };
+
+  const readyCount = rows.filter((r) => r.status === 'ready').length;
+
+  return (
+    <div className="admin-upload-card">
+      <h2>Upload Background Music</h2>
+      <p className="admin-hint">
+        File masuk ke folder R2 "{BACKGROUND_MUSIC_R2_FOLDER}/" -- edit title & tandain Pro-only sebelum upload.
+      </p>
+      <input type="file" accept="audio/*" multiple onChange={handleFilesSelected} disabled={uploading} />
+
+      {rows.length > 0 && (
+        <>
+          <div className="admin-list" style={{ marginTop: 16 }}>
+            {rows.map((row, i) => (
+              <div className="admin-list-item" key={i}>
+                <div className="admin-list-item-info" style={{ flex: 1 }}>
+                  <strong>{row.file.name}</strong>
+                  <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginTop: 6 }}>
+                    <input
+                      value={row.title}
+                      onChange={(e) => updateRow(i, { title: e.target.value })}
+                      placeholder="Track title"
+                      disabled={row.status === 'uploading' || row.status === 'done'}
+                      style={{ flex: 1 }}
+                    />
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap' }}>
+                      <input
+                        type="checkbox"
+                        checked={row.isPro}
+                        onChange={(e) => updateRow(i, { isPro: e.target.checked })}
+                        disabled={row.status === 'uploading' || row.status === 'done'}
+                      />
+                      Pro-only
+                    </label>
+                  </div>
+                  {row.status === 'error' && <p style={{ color: 'var(--err)' }}>{row.error}</p>}
+                  {row.status === 'done' && <p style={{ color: 'var(--ok)' }}>Uploaded successfully.</p>}
+                </div>
+                <span className="admin-status-tag">{row.status}</span>
+              </div>
+            ))}
+          </div>
+          <button onClick={handleUploadAll} disabled={uploading || readyCount === 0} style={{ marginTop: 16 }}>
+            {uploading ? 'Uploading…' : `Upload ${readyCount} ready file(s)`}
+          </button>
+        </>
+      )}
+
+      <h2 style={{ marginTop: 32 }}>Background Music Library ({tracks.length})</h2>
+      {loadingTracks ? (
+        <p className="admin-loading">Loading…</p>
+      ) : (
+        <div className="admin-table">
+          <div className="admin-table-row admin-table-head">
+            <span>Title</span><span>Pro-only</span><span>Preview</span><span></span>
+          </div>
+          {tracks.map((t) => (
+            <div className="admin-table-row" key={t.$id}>
+              {editingId === t.$id ? (
+                <>
+                  <input value={editForm.title} onChange={(e) => setEditForm({ ...editForm, title: e.target.value })} />
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                    <input
+                      type="checkbox"
+                      checked={editForm.is_pro}
+                      onChange={(e) => setEditForm({ ...editForm, is_pro: e.target.checked })}
+                    />
+                    Pro-only
+                  </label>
+                  <audio controls src={t.audio_url} style={{ height: 28, maxWidth: 120 }} />
+                  <div className="admin-table-actions">
+                    <button onClick={saveEdit}>Save</button>
+                    <button onClick={() => setEditingId(null)}>Cancel</button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <span>{t.title}</span>
+                  <span>{t.is_pro ? '👑 Pro' : '--'}</span>
+                  <audio controls src={t.audio_url} style={{ height: 28, maxWidth: 120 }} />
+                  <div className="admin-table-actions">
+                    <button onClick={() => startEdit(t)}>Edit</button>
+                    <button className="admin-delete-btn" onClick={() => handleDelete(t)}>Delete</button>
+                  </div>
+                </>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+
 export default function AdminDataManager() {
   const [checkingAuth, setCheckingAuth] = useState(true);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
@@ -347,7 +560,7 @@ export default function AdminDataManager() {
   }, []);
 
   const refreshSpeakers = async () => {
-    const res = await databases.listDocuments(DATABASE_ID, SPEAKERS_COLLECTION_ID, [Query.limit(500)]);
+    const res = await databases.listDocuments(DATABASE_ID, SPEAKERS_COLLECTION_ID, [Query.limit(200)]);
     setSpeakers(res.documents);
   };
 
@@ -398,11 +611,13 @@ export default function AdminDataManager() {
         <button className={activeTab === 'upload' ? 'admin-tab-active' : ''} onClick={() => setActiveTab('upload')}>Batch Upload</button>
         <button className={activeTab === 'speakers' ? 'admin-tab-active' : ''} onClick={() => setActiveTab('speakers')}>Speakers</button>
         <button className={activeTab === 'emotions' ? 'admin-tab-active' : ''} onClick={() => setActiveTab('emotions')}>Emotion Samples</button>
+        <button className={activeTab === 'bgmusic' ? 'admin-tab-active' : ''} onClick={() => setActiveTab('bgmusic')}>Background Music</button>
       </div>
 
       {activeTab === 'upload' && <BatchUploadTab />}
       {activeTab === 'speakers' && <SpeakersTab speakers={speakers} refreshSpeakers={refreshSpeakers} />}
       {activeTab === 'emotions' && <EmotionSamplesTab />}
+      {activeTab === 'bgmusic' && <BackgroundMusicTab />}
     </div>
   );
 }
