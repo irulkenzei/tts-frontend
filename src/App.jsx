@@ -86,7 +86,7 @@ const TtsServer = () => {
   const [dialogueScript, setDialogueScript] = useState('');
   const textRef = useRef(null);
   const dialogueRef = useRef(null);
-  const MAX_CHARS = 3000;
+  const MAX_CHARS = 500;
 
   const [speakerAssignments, setSpeakerAssignments] = useState({});
   const detectedSpeakerNames = useMemo(
@@ -684,7 +684,7 @@ const TtsServer = () => {
       const maxAttempts = 60;
       let job = null;
       while (attempts < maxAttempts) {
-        await new Promise((resolve) => setTimeout(resolve, 3000));
+        await new Promise((resolve) => setTimeout(resolve, 500));
         job = await databases.getDocument(DATABASE_ID, SUBTITLE_JOBS_COLLECTION_ID, requestId);
         if (job.status === 'completed' || job.status === 'failed') break;
         attempts++;
@@ -792,7 +792,7 @@ const TtsServer = () => {
       const maxAttempts = 40;
       let job = null;
       while (attempts < maxAttempts) {
-        await new Promise((resolve) => setTimeout(resolve, 3000));
+        await new Promise((resolve) => setTimeout(resolve, 500));
         job = await databases.getDocument(DATABASE_ID, CONVERT_JOBS_COLLECTION_ID, requestId);
         if (job.status === 'completed' || job.status === 'failed') break;
         attempts++;
@@ -987,7 +987,7 @@ const TtsServer = () => {
         if (Date.now() - pollStart > maxWaitMs) {
           throw new Error('Generation timed out. Please check Appwrite Console logs.');
         }
-        await new Promise((resolve) => setTimeout(resolve, 3000));
+        await new Promise((resolve) => setTimeout(resolve, 500));
         try {
           jobDoc = await databases.getDocument(DATABASE_ID, JOBS_COLLECTION_ID, requestId);
         } catch (notFoundErr) {
