@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Client, Functions } from 'appwrite';
+import { Client, Functions } from 'appwrite'; 
 import {
   account, databases, ID, Query,
   DATABASE_ID, APPWRITE_ENDPOINT, APPWRITE_PROJECT_ID, UPLOAD_TO_R2_FUNCTION_ID,
