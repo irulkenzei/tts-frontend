@@ -1,0 +1,258 @@
+.pro-container {
+  position: relative;
+  min-height: 100vh;
+  background: #06050a;
+  overflow: hidden;
+  display: flex;
+  justify-content: center;
+}
+
+.aura-purple {
+  position: absolute;
+  width: 500px;
+  height: 500px;
+  border-radius: 50%;
+  background: #9d4edd;
+  opacity: 0.15;
+  filter: blur(100px);
+  bottom: -150px;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.aura-blue {
+  position: absolute;
+  width: 350px;
+  height: 350px;
+  border-radius: 50%;
+  background: #00c2ff;
+  opacity: 0.1;
+  filter: blur(80px);
+  top: 50px;
+  left: -50px;
+}
+
+.pro-content {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  max-width: 480px;
+  padding: 80px 20px 60px;
+}
+
+.pro-header {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-bottom: 40px;
+}
+
+.crown-circle {
+  width: 70px;
+  height: 70px;
+  border-radius: 35px;
+  background: rgba(255, 215, 0, 0.1);
+  border: 1px solid rgba(255, 215, 0, 0.2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 20px;
+}
+
+.pro-title {
+  color: #fff;
+  font-size: 32px;
+  font-weight: 800;
+  letter-spacing: -0.5px;
+  margin: 0;
+}
+
+.features-grid {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 30px;
+}
+
+.feature-box {
+  width: 47%;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 16px;
+  padding: 14px;
+  display: flex;
+  align-items: center;
+}
+
+.icon-container {
+  margin-right: 10px;
+  display: flex;
+}
+
+.feature-label {
+  color: #e2e8f0;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.pricing-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 30px;
+}
+
+.plan-card {
+  background: rgba(255, 255, 255, 0.02);
+  border: 2px solid rgba(255, 255, 255, 0.05);
+  border-radius: 24px;
+  padding: 24px;
+  position: relative;
+  overflow: hidden;
+  text-align: left;
+  cursor: pointer;
+  color: inherit;
+  font-family: inherit;
+}
+
+.plan-card.selected {
+  border-color: #00c2ff;
+  background: rgba(0, 194, 255, 0.03);
+}
+
+.radio-row {
+  display: flex;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.radio-outline {
+  width: 20px;
+  height: 20px;
+  border-radius: 10px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-right: 12px;
+}
+
+.radio-outline.active {
+  border-color: #00c2ff;
+}
+
+.radio-inner {
+  width: 10px;
+  height: 10px;
+  border-radius: 5px;
+  background: #00c2ff;
+}
+
+.plan-name {
+  color: #fff;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.price {
+  color: #fff;
+  font-size: 28px;
+  font-weight: 800;
+}
+
+.price-sub {
+  color: #64748b;
+  font-size: 13px;
+  margin-top: 4px;
+}
+
+.best-value-badge {
+  position: absolute;
+  top: 0;
+  right: 0;
+  background: #ffd700;
+  padding: 6px 12px;
+  border-bottom-left-radius: 16px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.best-value-badge span {
+  color: #000;
+  font-size: 10px;
+  font-weight: 900;
+}
+
+.action-container {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.email-input {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 14px;
+  padding: 14px 16px;
+  color: #fff;
+  font-size: 15px;
+  margin-bottom: 12px;
+  outline: none;
+}
+
+.email-input::placeholder {
+  color: #5b5875;
+}
+
+.email-input:focus {
+  border-color: #00c2ff;
+}
+
+.error-box {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #ff3b30;
+  font-size: 13px;
+  margin-bottom: 12px;
+}
+
+.pro-button {
+  width: 100%;
+  height: 60px;
+  border-radius: 30px;
+  background: #00c2ff;
+  border: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  box-shadow: 0 10px 20px rgba(0, 194, 255, 0.4);
+  color: #000;
+  font-size: 18px;
+  font-weight: 800;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.pro-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.spinner {
+  width: 22px;
+  height: 22px;
+  border: 3px solid rgba(0, 0, 0, 0.2);
+  border-top-color: #000;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
