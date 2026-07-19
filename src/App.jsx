@@ -873,7 +873,9 @@ const TtsServer = () => {
   const handleGenerateSpeech = async (e) => {
     e.preventDefault();
     if (isLimitReached) {
-      showToast('You have reached the free generation limit. Upgrade to Pro!', 3500, 'warning');
+      // 🆕 Arahkan ke halaman pricing, bukan cuma toast -- konsisten
+      // dengan pola "Upgrade to Pro" di mobile app (onNavigateToPro).
+      window.location.href = '/pricing';
       return;
     }
     if (mode === 'single' && !text) {
