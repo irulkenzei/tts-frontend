@@ -5,8 +5,8 @@ import './ProPricingPage.css';
 // Squeezy Dashboard > Products > pilih product > klik variant-nya > lihat
 // ID di URL atau tab "Variants". WAJIB diisi sebelum halaman ini jalan.
 const LEMONSQUEEZY_VARIANT_IDS = {
-  monthly: 'REPLACE_WITH_MONTHLY_VARIANT_ID', 
-  yearly: 'REPLACE_WITH_YEARLY_VARIANT_ID',
+  monthly: '1925516', 
+  yearly: '1925523',
 };
 
 // Function Appwrite yang bikin Lemon Squeezy Checkout -- URL endpoint HTTP
