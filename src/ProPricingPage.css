@@ -59,6 +59,16 @@
   margin-bottom: 20px;
 }
 
+.emoji-icon {
+  font-size: 32px;
+  line-height: 1;
+}
+
+.emoji-icon-sm {
+  font-size: 18px;
+  line-height: 1;
+}
+
 .pro-title {
   color: #fff;
   font-size: 32px;
@@ -183,6 +193,7 @@
   color: #000;
   font-size: 10px;
   font-weight: 900;
+  white-space: nowrap;
 }
 
 .action-container {
