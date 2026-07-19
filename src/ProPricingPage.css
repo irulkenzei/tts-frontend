@@ -32,6 +32,31 @@
   left: -50px;
 }
 
+/* 🆕 Backdrop solid custom -- z-index di bawah overlay Lemon Squeezy
+   (mereka pakai z-index sangat tinggi buat iframe pembayaran), tapi di
+   atas semua konten halaman kita sendiri. */
+.custom-overlay-backdrop {
+  position: fixed;
+  inset: 0;
+  background: #06050a;
+  z-index: 99998;
+}
+
+.custom-overlay-close {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  width: 40px;
+  height: 40px;
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: #fff;
+  font-size: 16px;
+  cursor: pointer;
+  z-index: 99999;
+}
+
 .pro-content {
   position: relative;
   z-index: 1;
