@@ -1,6 +1,6 @@
 import './ProPricingPage.css';
 
-export default function PricingSuccessPage() {
+export default function PricingSuccessPage() { 
   return (
     <div className="pro-container">
       {/* 🆕 Backdrop solid eksplisit -- jaga-jaga kalau halaman ini
