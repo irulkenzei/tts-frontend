@@ -31,24 +31,38 @@ export default function ProPricingPage() {
   const [email, setEmail] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState('');
+  // 🆕 Backdrop solid custom kita sendiri -- ditampilkan pas overlay Lemon
+  // Squeezy dibuka, biar konten halaman (judul "Unlock Premium" dkk) tidak
+  // "keliatan tembus" lewat backdrop transparan bawaan Lemon Squeezy.
+  const [overlayOpen, setOverlayOpen] = useState(false);
 
   // 📜 Muat Lemon.js sekali saat halaman ini pertama dibuka. Kalau script
   // sudah pernah dimuat sebelumnya (misal user pindah-pindah halaman SPA),
   // tidak dimuat dobel.
   useEffect(() => {
-    if (document.querySelector(`script[src="${LEMONJS_SRC}"]`)) {
-      // Sudah pernah dimuat -- pastikan listener tombol overlay tetap aktif
-      // (kasus umum di React: script kadang init sebelum komponen render).
+    const setupEventHandler = () => {
       window.createLemonSqueezy?.();
+      // 🆕 Checkout.Success adalah SATU-SATUNYA event resmi yang di-emit
+      // Lemon.js -- dipakai buat tutup backdrop kita begitu bayar sukses
+      // (walau biasanya halaman langsung redirect ke SUCCESS_URL duluan).
+      window.LemonSqueezy?.Setup?.({
+        eventHandler: (event) => {
+          if (event.event === 'Checkout.Success') {
+            setOverlayOpen(false);
+          }
+        },
+      });
+    };
+
+    if (document.querySelector(`script[src="${LEMONJS_SRC}"]`)) {
+      setupEventHandler();
       return;
     }
 
     const script = document.createElement('script');
     script.src = LEMONJS_SRC;
     script.defer = true;
-    script.onload = () => {
-      window.createLemonSqueezy?.();
-    };
+    script.onload = setupEventHandler;
     document.body.appendChild(script);
   }, []);
 
@@ -80,11 +94,13 @@ export default function ProPricingPage() {
       // penuh -- user tidak pernah "pindah" dari /pricing sama sekali.
       // Kalau gagal/dibatalkan, overlay-nya cuma ketutup, user otomatis
       // "balik" ke /pricing karena memang tidak pernah pergi dari situ.
+      setOverlayOpen(true);
       if (window.LemonSqueezy?.Url?.Open) {
         window.LemonSqueezy.Url.Open(data.url);
       } else {
         // Fallback kalau Lemon.js entah kenapa gagal termuat (misal
         // diblokir ad-blocker) -- tetap bisa checkout lewat redirect biasa.
+        setOverlayOpen(false);
         window.location.href = data.url;
       }
       setIsProcessing(false);
@@ -99,6 +115,24 @@ export default function ProPricingPage() {
     <div className="pro-container">
       <div className="aura-purple" />
       <div className="aura-blue" />
+
+      {/* 🆕 Backdrop solid custom -- nutupin total konten halaman selama
+          overlay Lemon Squeezy terbuka, backdrop bawaan mereka transparan
+          jadi teks di belakang masih keliatan tanpa ini. */}
+      {overlayOpen && (
+        <div className="custom-overlay-backdrop">
+          <button
+            className="custom-overlay-close"
+            onClick={() => {
+              window.LemonSqueezy?.Url?.Close?.();
+              setOverlayOpen(false);
+            }}
+            aria-label="Close"
+          >
+            ✕
+          </button>
+        </div>
+      )}
 
       <div className="pro-content">
         <div className="pro-header">
