@@ -6,6 +6,7 @@ import PublicVoiceListings from './PublicVoiceListings.jsx'
 import ResetPassword from './ResetPassword.jsx'
 import AdminDataManager from './AdminDataManager.jsx'
 import ProPricingPage from './ProPricingPage.jsx'
+import PricingSuccessPage from './PricingSuccessPage.jsx'
 const path = window.location.pathname
 const RootComponent =
   path === '/admin' ? AdminListings
@@ -13,6 +14,7 @@ const RootComponent =
   : path === '/reset-password' ? ResetPassword
   : path === '/admin-emotions' ? AdminDataManager
   : path === '/pricing' ? ProPricingPage
+  : path === '/pricing-success' ? PricingSuccessPage
   : App
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
