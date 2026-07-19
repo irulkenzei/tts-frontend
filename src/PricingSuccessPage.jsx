@@ -3,6 +3,12 @@ import './ProPricingPage.css';
 export default function PricingSuccessPage() {
   return (
     <div className="pro-container">
+      {/* 🆕 Backdrop solid eksplisit -- jaga-jaga kalau halaman ini
+          ke-render DI DALAM overlay/iframe Lemon Squeezy (bukan navigasi
+          halaman penuh), biar tetap solid #06050a, tidak ada celah
+          transparan sama sekali. Z-index RENDAH -- di belakang konten,
+          beda dengan versi di ProPricingPage yang sengaja nutupin konten. */}
+      <div className="solid-backdrop-behind" />
       <div className="aura-purple" />
       <div className="aura-blue" />
 
