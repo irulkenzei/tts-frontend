@@ -5,8 +5,8 @@ import './ProPricingPage.css';
 // Squeezy Dashboard > Products > pilih product > klik variant-nya > lihat
 // ID di URL atau tab "Variants". WAJIB diisi sebelum halaman ini jalan.
 const LEMONSQUEEZY_VARIANT_IDS = {
-  monthly: '1925516', 
-  yearly: '1925523',
+  monthly: 'REPLACE_WITH_MONTHLY_VARIANT_ID',
+  yearly: 'REPLACE_WITH_YEARLY_VARIANT_ID',
 };
 
 // Function Appwrite yang bikin Lemon Squeezy Checkout -- URL endpoint HTTP.
@@ -42,15 +42,17 @@ export default function ProPricingPage() {
   useEffect(() => {
     const setupEventHandler = () => {
       window.createLemonSqueezy?.();
-      // 🆕 Checkout.Success adalah SATU-SATUNYA event resmi yang di-emit
-      // Lemon.js -- dipakai buat tutup backdrop kita begitu bayar sukses
-      // (walau biasanya halaman langsung redirect ke SUCCESS_URL duluan).
+      // 🔧 FIX: sebelumnya setOverlayOpen(false) dipanggil DI SINI, pas
+      // Checkout.Success -- tapi Lemon Squeezy masih nampilin kartu "Thanks
+      // for your order!" mereka SENDIRI selama beberapa detik SEBELUM
+      // benar-benar redirect ke SUCCESS_URL. Backdrop kita keburu hilang
+      // duluan di jeda itu, /pricing keliatan lagi di belakang kartu
+      // konfirmasi mereka (backdrop bawaan mereka ternyata gak fully
+      // opaque). Sekarang backdrop kita DIBIARKAN nempel terus sampai
+      // browser BENERAN navigasi ke SUCCESS_URL -- itu otomatis unmount
+      // komponen ini semua, gak perlu di-manage manual lagi.
       window.LemonSqueezy?.Setup?.({
-        eventHandler: (event) => {
-          if (event.event === 'Checkout.Success') {
-            setOverlayOpen(false);
-          }
-        },
+        eventHandler: () => {},
       });
     };
 
