@@ -1,13 +1,12 @@
 import { useState } from 'react';
-import { Crown, Zap, Mic2, Waves, Download, FolderOpen, Gem, Star, AlertCircle } from 'lucide-react';
 import './ProPricingPage.css';
 
 // 📌 Variant ID Lemon Squeezy (BUKAN product ID) -- ambil dari Lemon
 // Squeezy Dashboard > Products > pilih product > klik variant-nya > lihat
 // ID di URL atau tab "Variants". WAJIB diisi sebelum halaman ini jalan.
 const LEMONSQUEEZY_VARIANT_IDS = {
-  monthly: '1925516',
-  yearly: '1925523',
+  monthly: 'REPLACE_WITH_MONTHLY_VARIANT_ID',
+  yearly: 'REPLACE_WITH_YEARLY_VARIANT_ID',
 };
 
 // Function Appwrite yang bikin Lemon Squeezy Checkout -- URL endpoint HTTP
@@ -74,18 +73,18 @@ export default function ProPricingPage() {
       <div className="pro-content">
         <div className="pro-header">
           <div className="crown-circle">
-            <Crown size={32} color="#FFD700" fill="#FFD700" />
+            <span className="emoji-icon">👑</span>
           </div>
           <h1 className="pro-title">Unlock Premium</h1>
         </div>
 
         <div className="features-grid">
-          <FeatureItem icon={<Zap size={18} color="#A855F7" />} label="Fair-use generation" />
-          <FeatureItem icon={<Mic2 size={18} color="#A855F7" />} label="Voice cloning included" />
-          <FeatureItem icon={<Waves size={18} color="#00C2FF" />} label="330+ AI voices" />
-          <FeatureItem icon={<Download size={18} color="#00C2FF" />} label="Download & share" />
-          <FeatureItem icon={<FolderOpen size={18} color="#E2E8F0" />} label="Local storage" />
-          <FeatureItem icon={<Gem size={18} color="#E2E8F0" />} label="Premium quality" />
+          <FeatureItem icon="⚡" label="Fair-use generation" />
+          <FeatureItem icon="🎙️" label="Voice cloning included" />
+          <FeatureItem icon="🌊" label="330+ AI voices" />
+          <FeatureItem icon="⬇️" label="Download & share" />
+          <FeatureItem icon="📁" label="Local storage" />
+          <FeatureItem icon="💎" label="Premium quality" />
         </div>
 
         <div className="pricing-section">
@@ -108,8 +107,7 @@ export default function ProPricingPage() {
             onClick={() => setSelectedPlan('yearly')}
           >
             <div className="best-value-badge">
-              <Star size={10} color="#000" fill="#000" />
-              <span>BEST VALUE</span>
+              <span>⭐ BEST VALUE</span>
             </div>
             <div className="radio-row">
               <div className={`radio-outline ${selectedPlan === 'yearly' ? 'active' : ''}`}>
@@ -134,7 +132,7 @@ export default function ProPricingPage() {
 
           {error && (
             <div className="error-box">
-              <AlertCircle size={14} color="#FF3B30" />
+              <span>⚠️</span>
               <span>{error}</span>
             </div>
           )}
@@ -144,7 +142,7 @@ export default function ProPricingPage() {
               <span className="spinner" />
             ) : (
               <>
-                <Crown size={20} color="#000" fill="#000" />
+                <span className="emoji-icon-sm">👑</span>
                 <span>Get Pro Access</span>
               </>
             )}
