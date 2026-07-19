@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import './ProPricingPage.css';
 
 // 📌 Variant ID Lemon Squeezy (BUKAN product ID) -- ambil dari Lemon
@@ -9,11 +9,13 @@ const LEMONSQUEEZY_VARIANT_IDS = {
   yearly: '1925523',
 };
 
-// Function Appwrite yang bikin Lemon Squeezy Checkout -- URL endpoint HTTP
-// (bukan lewat Appwrite SDK createExecution, karena ini butuh browser
-// redirect langsung ke checkout.url, lebih simpel pakai fetch biasa ke
-// endpoint HTTP function-nya).
+// Function Appwrite yang bikin Lemon Squeezy Checkout -- URL endpoint HTTP.
 const CREATE_CHECKOUT_URL = import.meta.env.VITE_CREATE_CHECKOUT_URL;
+
+// URL script Lemon.js -- dimuat dinamis di useEffect di bawah (bukan
+// ditaruh manual di index.html), biar file ini "self-contained" -- tinggal
+// pasang ProPricingPage.jsx di project manapun, script-nya otomatis kepasang.
+const LEMONJS_SRC = 'https://app.lemonsqueezy.com/js/lemon.js';
 
 // Harga ditampilkan statis di sini (SAMA PERSIS dengan mobile: $14.99/bulan,
 // $99.99/tahun) -- beda dengan mobile yang fetch harga live dari store,
@@ -29,6 +31,26 @@ export default function ProPricingPage() {
   const [email, setEmail] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState('');
+
+  // 📜 Muat Lemon.js sekali saat halaman ini pertama dibuka. Kalau script
+  // sudah pernah dimuat sebelumnya (misal user pindah-pindah halaman SPA),
+  // tidak dimuat dobel.
+  useEffect(() => {
+    if (document.querySelector(`script[src="${LEMONJS_SRC}"]`)) {
+      // Sudah pernah dimuat -- pastikan listener tombol overlay tetap aktif
+      // (kasus umum di React: script kadang init sebelum komponen render).
+      window.createLemonSqueezy?.();
+      return;
+    }
+
+    const script = document.createElement('script');
+    script.src = LEMONJS_SRC;
+    script.defer = true;
+    script.onload = () => {
+      window.createLemonSqueezy?.();
+    };
+    document.body.appendChild(script);
+  }, []);
 
   const handleGetProAccess = async () => {
     setError('');
@@ -54,10 +76,18 @@ export default function ProPricingPage() {
         throw new Error(data.error || 'Failed to start checkout.');
       }
 
-      // 🔀 Redirect penuh ke halaman Lemon Squeezy Checkout (bukan
-      // modal/iframe) -- pola paling simpel & aman, user bayar di domain
-      // Lemon Squeezy sendiri.
-      window.location.href = data.url;
+      // 🪟 Buka sebagai OVERLAY (modal di atas halaman ini), bukan redirect
+      // penuh -- user tidak pernah "pindah" dari /pricing sama sekali.
+      // Kalau gagal/dibatalkan, overlay-nya cuma ketutup, user otomatis
+      // "balik" ke /pricing karena memang tidak pernah pergi dari situ.
+      if (window.LemonSqueezy?.Url?.Open) {
+        window.LemonSqueezy.Url.Open(data.url);
+      } else {
+        // Fallback kalau Lemon.js entah kenapa gagal termuat (misal
+        // diblokir ad-blocker) -- tetap bisa checkout lewat redirect biasa.
+        window.location.href = data.url;
+      }
+      setIsProcessing(false);
     } catch (e) {
       console.error('[lemonsqueezy] checkout error:', e);
       setError(e.message || 'Something went wrong. Please try again.');
