@@ -7,6 +7,10 @@ import ResetPassword from './ResetPassword.jsx'
 import AdminDataManager from './AdminDataManager.jsx'
 import ProPricingPage from './ProPricingPage.jsx'
 import PricingSuccessPage from './PricingSuccessPage.jsx'
+import CreateAccountPage from './CreateAccountPage.jsx'
+import LoginPage from './LoginPage.jsx'
+import AuthCallbackPage from './AuthCallbackPage.jsx'
+import AccountPage from './AccountPage.jsx'
 const path = window.location.pathname
 const RootComponent =
   path === '/admin' ? AdminListings
@@ -15,6 +19,10 @@ const RootComponent =
   : path === '/admin-emotions' ? AdminDataManager
   : path === '/pricing' ? ProPricingPage
   : path === '/pricing-success' ? PricingSuccessPage
+  : path === '/signup' ? CreateAccountPage
+  : path === '/login' ? LoginPage
+  : path === '/auth-callback' ? AuthCallbackPage
+  : path === '/account' ? AccountPage
   : App
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
