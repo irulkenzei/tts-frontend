@@ -123,10 +123,11 @@ export default function ProPricingPage() {
       throw new Error(data.error || 'Failed to start checkout.');
     }
 
-    // 🪟 Snap popup Midtrans -- ini juga overlay (bukan redirect penuh),
-    // jadi TIDAK butuh backdrop custom kayak Lemon Squeezy -- Snap sudah
-    // punya backdrop solid bawaan sendiri.
+    // 🪟 Snap popup Midtrans -- ternyata backdrop bawaan mereka juga tidak
+    // fully opaque (sama kayak Lemon Squeezy), jadi tetap pakai backdrop
+    // custom kita.
     setIsProcessing(false);
+    setOverlayOpen(true);
     window.snap.pay(data.token, {
       onSuccess: () => {
         window.location.href = '/pricing-success';
@@ -137,11 +138,13 @@ export default function ProPricingPage() {
         window.location.href = '/pricing-success';
       },
       onError: () => {
+        setOverlayOpen(false);
         setError('Payment failed. Please try again.');
       },
       onClose: () => {
-        // User nutup popup Snap manual tanpa nyelesain bayar -- gak perlu
-        // aksi apa-apa, biarin aja mereka tetap di /pricing.
+        // User nutup popup Snap manual tanpa nyelesain bayar -- tutup
+        // backdrop kita, biarin mereka tetap di /pricing normal.
+        setOverlayOpen(false);
       },
     });
   };
