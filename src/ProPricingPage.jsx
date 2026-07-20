@@ -17,6 +17,23 @@ const CREATE_CHECKOUT_URL = import.meta.env.VITE_CREATE_CHECKOUT_URL;
 // pasang ProPricingPage.jsx di project manapun, script-nya otomatis kepasang.
 const LEMONJS_SRC = 'https://app.lemonsqueezy.com/js/lemon.js';
 
+// 🇮🇩 Jalur Midtrans -- khusus user terdeteksi dari Indonesia. Model
+// SEKALI BAYAR per periode (bukan auto-renewal), user bayar manual lagi
+// tiap masa aktifnya habis.
+const CREATE_MIDTRANS_TRANSACTION_URL = import.meta.env.VITE_CREATE_MIDTRANS_TRANSACTION_URL;
+const MIDTRANS_CLIENT_KEY = import.meta.env.VITE_MIDTRANS_CLIENT_KEY;
+// Ganti ke 'https://app.midtrans.com/snap/snap.js' kalau sudah production
+// (bukan sandbox/testing lagi).
+const SNAPJS_SRC = 'https://app.sandbox.midtrans.com/snap/snap.js';
+
+// 💰 Harga dalam IDR -- SILAKAN SESUAIKAN sendiri, ini cuma perkiraan
+// konversi kasar dari $14.99/$99.99 (kurs ~Rp16.000/USD, dibulatkan).
+// Midtrans transaksi HARUS dalam IDR, gak bisa USD.
+const PRICING_IDR = {
+  monthly: 239000,
+  yearly: 1599000,
+};
+
 // Harga ditampilkan statis di sini (SAMA PERSIS dengan mobile: $14.99/bulan,
 // $99.99/tahun) -- beda dengan mobile yang fetch harga live dari store,
 // karena Stripe Checkout sendiri yang nanti nampilin harga resmi & currency
@@ -35,6 +52,20 @@ export default function ProPricingPage() {
   // Squeezy dibuka, biar konten halaman (judul "Unlock Premium" dkk) tidak
   // "keliatan tembus" lewat backdrop transparan bawaan Lemon Squeezy.
   const [overlayOpen, setOverlayOpen] = useState(false);
+  // 🇮🇩 null = belum terdeteksi/masih loading, true = Indonesia (pakai
+  // Midtrans), false = luar Indonesia (pakai Lemon Squeezy). Default aman
+  // kalau deteksi gagal: anggap BUKAN Indonesia (pakai jalur global).
+  const [isIndonesia, setIsIndonesia] = useState(null);
+
+  // 🌍 Deteksi negara user lewat IP geolocation -- dipanggil sekali saat
+  // halaman dibuka. Kalau gagal (network error, API down, dll), fallback
+  // ke jalur global (Lemon Squeezy) -- BUKAN diblokir/error ke user.
+  useEffect(() => {
+    fetch('https://ipapi.co/json/')
+      .then((res) => res.json())
+      .then((data) => setIsIndonesia(data.country_code === 'ID'))
+      .catch(() => setIsIndonesia(false));
+  }, []);
 
   // 📜 Muat Lemon.js sekali saat halaman ini pertama dibuka. Kalau script
   // sudah pernah dimuat sebelumnya (misal user pindah-pindah halaman SPA),
@@ -68,6 +99,84 @@ export default function ProPricingPage() {
     document.body.appendChild(script);
   }, []);
 
+  // 📜 Muat Snap.js Midtrans HANYA kalau user terdeteksi dari Indonesia --
+  // gak perlu dimuat buat user luar Indonesia sama sekali.
+  useEffect(() => {
+    if (!isIndonesia) return;
+    if (document.querySelector(`script[src="${SNAPJS_SRC}"]`)) return;
+
+    const script = document.createElement('script');
+    script.src = SNAPJS_SRC;
+    script.setAttribute('data-client-key', MIDTRANS_CLIENT_KEY);
+    document.body.appendChild(script);
+  }, [isIndonesia]);
+
+  const handleMidtransCheckout = async () => {
+    const res = await fetch(CREATE_MIDTRANS_TRANSACTION_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ plan: selectedPlan, email: email.trim() }),
+    });
+
+    const data = await res.json();
+    if (!res.ok || !data.token) {
+      throw new Error(data.error || 'Failed to start checkout.');
+    }
+
+    // 🪟 Snap popup Midtrans -- ini juga overlay (bukan redirect penuh),
+    // jadi TIDAK butuh backdrop custom kayak Lemon Squeezy -- Snap sudah
+    // punya backdrop solid bawaan sendiri.
+    setIsProcessing(false);
+    window.snap.pay(data.token, {
+      onSuccess: () => {
+        window.location.href = '/pricing-success';
+      },
+      onPending: () => {
+        // Transfer bank/VA -- belum lunas saat ini juga, tapi transaksi
+        // sudah tercatat, is_pro di-grant lewat webhook begitu lunas.
+        window.location.href = '/pricing-success';
+      },
+      onError: () => {
+        setError('Payment failed. Please try again.');
+      },
+      onClose: () => {
+        // User nutup popup Snap manual tanpa nyelesain bayar -- gak perlu
+        // aksi apa-apa, biarin aja mereka tetap di /pricing.
+      },
+    });
+  };
+
+  const handleLemonSqueezyCheckout = async () => {
+    const res = await fetch(CREATE_CHECKOUT_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        variantId: LEMONSQUEEZY_VARIANT_IDS[selectedPlan],
+        email: email.trim(),
+      }),
+    });
+
+    const data = await res.json();
+    if (!res.ok || !data.url) {
+      throw new Error(data.error || 'Failed to start checkout.');
+    }
+
+    // 🪟 Buka sebagai OVERLAY (modal di atas halaman ini), bukan redirect
+    // penuh -- user tidak pernah "pindah" dari /pricing sama sekali.
+    // Kalau gagal/dibatalkan, overlay-nya cuma ketutup, user otomatis
+    // "balik" ke /pricing karena memang tidak pernah pergi dari situ.
+    setOverlayOpen(true);
+    if (window.LemonSqueezy?.Url?.Open) {
+      window.LemonSqueezy.Url.Open(data.url);
+    } else {
+      // Fallback kalau Lemon.js entah kenapa gagal termuat (misal
+      // diblokir ad-blocker) -- tetap bisa checkout lewat redirect biasa.
+      setOverlayOpen(false);
+      window.location.href = data.url;
+    }
+    setIsProcessing(false);
+  };
+
   const handleGetProAccess = async () => {
     setError('');
 
@@ -78,36 +187,16 @@ export default function ProPricingPage() {
 
     setIsProcessing(true);
     try {
-      const res = await fetch(CREATE_CHECKOUT_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          variantId: LEMONSQUEEZY_VARIANT_IDS[selectedPlan],
-          email: email.trim(),
-        }),
-      });
-
-      const data = await res.json();
-      if (!res.ok || !data.url) {
-        throw new Error(data.error || 'Failed to start checkout.');
-      }
-
-      // 🪟 Buka sebagai OVERLAY (modal di atas halaman ini), bukan redirect
-      // penuh -- user tidak pernah "pindah" dari /pricing sama sekali.
-      // Kalau gagal/dibatalkan, overlay-nya cuma ketutup, user otomatis
-      // "balik" ke /pricing karena memang tidak pernah pergi dari situ.
-      setOverlayOpen(true);
-      if (window.LemonSqueezy?.Url?.Open) {
-        window.LemonSqueezy.Url.Open(data.url);
+      // 🇮🇩 Percabangan jalur pembayaran -- Indonesia lewat Midtrans,
+      // sisanya (dan kalau deteksi negara gagal/masih loading) lewat
+      // Lemon Squeezy.
+      if (isIndonesia) {
+        await handleMidtransCheckout();
       } else {
-        // Fallback kalau Lemon.js entah kenapa gagal termuat (misal
-        // diblokir ad-blocker) -- tetap bisa checkout lewat redirect biasa.
-        setOverlayOpen(false);
-        window.location.href = data.url;
+        await handleLemonSqueezyCheckout();
       }
-      setIsProcessing(false);
     } catch (e) {
-      console.error('[lemonsqueezy] checkout error:', e);
+      console.error('[checkout] error:', e);
       setError(e.message || 'Something went wrong. Please try again.');
       setIsProcessing(false);
     }
@@ -164,7 +253,9 @@ export default function ProPricingPage() {
               </div>
               <span className="plan-name">Monthly</span>
             </div>
-            <div className="price">{PRICING_DISPLAY.monthly.price}</div>
+            <div className="price">
+              {isIndonesia ? `Rp${PRICING_IDR.monthly.toLocaleString('id-ID')}` : PRICING_DISPLAY.monthly.price}
+            </div>
             <div className="price-sub">{PRICING_DISPLAY.monthly.period}</div>
           </button>
 
@@ -181,7 +272,9 @@ export default function ProPricingPage() {
               </div>
               <span className="plan-name">Yearly</span>
             </div>
-            <div className="price">{PRICING_DISPLAY.yearly.price}</div>
+            <div className="price">
+              {isIndonesia ? `Rp${PRICING_IDR.yearly.toLocaleString('id-ID')}` : PRICING_DISPLAY.yearly.price}
+            </div>
             <div className="price-sub">{PRICING_DISPLAY.yearly.period}</div>
           </button>
         </div>
