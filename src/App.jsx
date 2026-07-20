@@ -1561,6 +1561,7 @@ const TtsServer = () => {
           <a href="/request-feature">Request a Feature</a>
           <a href="/privacy-policy">Privacy Policy</a>
           <a href="/terms-of-service">Terms</a>
+          <a href='/delete-account'>Delete Account</a>
         </nav>
       </footer>
 
