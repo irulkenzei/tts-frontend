@@ -8,7 +8,6 @@ const LEMONSQUEEZY_VARIANT_IDS = {
   monthly: '1925516', 
   yearly: '1925523',
 };
-
 // Function Appwrite yang bikin Lemon Squeezy Checkout -- URL endpoint HTTP.
 const CREATE_CHECKOUT_URL = import.meta.env.VITE_CREATE_CHECKOUT_URL;
 
@@ -130,12 +129,17 @@ export default function ProPricingPage() {
     setOverlayOpen(true);
     window.snap.pay(data.token, {
       onSuccess: () => {
-        window.location.href = '/pricing-success';
+        window.location.href = '/pricing-success?status=success';
       },
       onPending: () => {
-        // Transfer bank/VA -- belum lunas saat ini juga, tapi transaksi
-        // sudah tercatat, is_pro di-grant lewat webhook begitu lunas.
-        window.location.href = '/pricing-success';
+        // 🔧 FIX: sebelumnya redirect ke tempat yang SAMA kayak onSuccess,
+        // padahal pending itu artinya BELUM benar-benar lunas (misal VA
+        // transfer bank yang user masih perlu selesaikan di luar) --
+        // is_pro BARU di-grant lewat webhook begitu status jadi
+        // "settlement". Query param ?status=pending dipakai
+        // PricingSuccessPage buat nampilin pesan yang beda, bukan
+        // ngaku-ngaku "You're Pro now!" padahal belum tentu.
+        window.location.href = '/pricing-success?status=pending';
       },
       onError: () => {
         setOverlayOpen(false);
