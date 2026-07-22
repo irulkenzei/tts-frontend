@@ -3,8 +3,11 @@ import { Query } from 'appwrite';
 import { segmentsToPlainText, segmentsToSrt, segmentsToVtt } from './subtitleUtils';
 import './App.css';
 import ChatBot from './components/ChatBot';
-import EmotionPicker from './EmotionPicker';
+import EmotionVoiceSelector from './EmotionVoiceSelector';
 import { account, appwriteFunctions, databases, storage, APPWRITE_ENDPOINT, APPWRITE_PROJECT_ID } from './appwriteClient';
+import { NLLB_LANGUAGES } from './nllbLanguages';
+import { translateText } from './translateService';
+import './Translate.css';
 
 function generateFileId() {
   return `f${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`;
@@ -68,10 +71,6 @@ const TtsServer = () => {
   const [voiceLibrary, setVoiceLibrary] = useState([]);
   const [selectedLibraryVoiceId, setSelectedLibraryVoiceId] = useState('');
   const [loadingLibrary, setLoadingLibrary] = useState(true);
-  // 🎭 Emotion (opsional) buat Single mode -- di-reset tiap kali ganti
-  // voice, karena emotion sample terikat ke speaker_id tertentu.
-  const [singleEmotionName, setSingleEmotionName] = useState(null);
-  const [singleEmotionAudioUrl, setSingleEmotionAudioUrl] = useState(null);
 
   const [isUploadingRecording, setIsUploadingRecording] = useState(false);
   const [isUploadingFile, setIsUploadingFile] = useState(false);
@@ -82,11 +81,72 @@ const TtsServer = () => {
   const dialogueRef = useRef(null);
   const MAX_CHARS = 500;
 
+  // 🎭 Mode Emotion -- tab TERSENDIRI (bukan opsi di sidebar Single
+  // Voice), text terpisah dari mode single/dialogue, voice-nya dari
+  // library `speaker_emotion_samples` (lihat EmotionVoiceSelector.jsx).
+  // Setiap kali user pilih voice, tag [Name]: di-insert ke baris BARU di
+  // emotionText (bukan nyambung di baris yang sama) -- kalau user pilih
+  // beberapa voice berbeda, itu jadi beberapa "speaker" sekaligus, SAMA
+  // PERSIS mekanisme Dialogue mode (speaker_map), makanya generate-nya
+  // nanti dikirim sebagai mode: 'dialogue' ke backend, bukan 'single'.
+  const [emotionText, setEmotionText] = useState('');
+  const emotionTextRef = useRef(null);
+  // name -> voice object (dari EmotionVoiceSelector), TERPISAH dari
+  // speakerAssignments milik Dialogue mode -- supaya nama yang kebetulan
+  // sama di dua mode itu gak saling timpa.
+  const [emotionSpeakerVoices, setEmotionSpeakerVoices] = useState({});
+  const [showEmotionVoicesInline, setShowEmotionVoicesInline] = useState(false);
+  const detectedEmotionSpeakerNames = useMemo(
+    () => parseSpeakersFromScript(emotionText),
+    [emotionText]
+  );
+  const getEmotionSpeakerUrl = (name) => emotionSpeakerVoices[name]?.audio_url || '';
+
+  // 🌍 Mode Translate -- tab tersendiri, port dari TranslatorScreen.tsx
+  // mobile. NLLB-200 (200+ bahasa), lewat translateService.js (pola
+  // start/check yang sama persis dengan mobile).
+  const [translateSourceLang, setTranslateSourceLang] = useState(
+    NLLB_LANGUAGES.find((l) => l.code === 'eng_Latn') || NLLB_LANGUAGES[0]
+  );
+  const [translateTargetLang, setTranslateTargetLang] = useState(
+    NLLB_LANGUAGES.find((l) => l.code === 'ind_Latn') || NLLB_LANGUAGES[0]
+  );
+  const [translateInput, setTranslateInput] = useState('');
+  const [translateOutput, setTranslateOutput] = useState('');
+  const [translating, setTranslating] = useState(false);
+  const [translationStatus, setTranslationStatus] = useState('');
+  const [translateCopied, setTranslateCopied] = useState(false);
+  const MAX_TRANSLATE_CHARS = 500;
+
   const [speakerAssignments, setSpeakerAssignments] = useState({});
   const detectedSpeakerNames = useMemo(
     () => parseSpeakersFromScript(dialogueScript),
     [dialogueScript]
   );
+
+  // 🆕 Auto-assign: begitu nama speaker terdeteksi di script (mis. ketik
+  // "[anna]:"), dan ada voice di Library yang namanya PERSIS cocok
+  // (case-insensitive), langsung di-assign otomatis -- user gak perlu
+  // cari-cari manual di dropdown lagi. Cuma jalan kalau speaker itu
+  // BELUM di-assign apapun (gak nimpa pilihan manual/custom URL user).
+  useEffect(() => {
+    if (!voiceLibrary.length || detectedSpeakerNames.length === 0) return;
+    setSpeakerAssignments((prev) => {
+      let changed = false;
+      const next = { ...prev };
+      detectedSpeakerNames.forEach((name) => {
+        if (next[name]) return; // udah ada assignment (manual/custom), jangan ditimpa
+        const match = voiceLibrary.find(
+          (v) => (v.name || v.label || '').trim().toLowerCase() === name.trim().toLowerCase()
+        );
+        if (match) {
+          next[name] = { source: 'library', libraryId: match.$id, customUrl: '' };
+          changed = true;
+        }
+      });
+      return changed ? next : prev;
+    });
+  }, [detectedSpeakerNames, voiceLibrary]);
 
   // Recording State
   const [isRecording, setIsRecording] = useState(false);
@@ -251,14 +311,6 @@ const TtsServer = () => {
     const voiceId = e.target.value;
     setSelectedLibraryVoiceId(voiceId);
     setVoiceSource(voiceId ? 'library' : '');
-    // Ganti voice -- emotion lama (kalau ada) udah gak relevan.
-    setSingleEmotionName(null);
-    setSingleEmotionAudioUrl(null);
-  };
-
-  const handleSelectSingleEmotion = (emotionName, audioUrl) => {
-    setSingleEmotionName(emotionName);
-    setSingleEmotionAudioUrl(audioUrl);
   };
 
   const getLibraryVoiceUrl = () => {
@@ -276,9 +328,7 @@ const TtsServer = () => {
   const handleAssignSpeakerLibrary = (name, libraryId) => {
     setSpeakerAssignments((prev) => ({
       ...prev,
-      // Ganti voice buat speaker ini -- emotion lama (kalau ada) udah
-      // gak relevan buat voice yang baru, jadi ikut di-reset.
-      [name]: { ...(prev[name] || {}), source: 'library', libraryId, emotionName: null, emotionAudioUrl: null },
+      [name]: { source: 'library', libraryId, customUrl: '' },
     }));
   };
 
@@ -289,20 +339,10 @@ const TtsServer = () => {
     }));
   };
 
-  const handleSelectSpeakerEmotion = (name, emotionName, audioUrl) => {
-    setSpeakerAssignments((prev) => ({
-      ...prev,
-      [name]: { ...(prev[name] || {}), emotionName, emotionAudioUrl: audioUrl },
-    }));
-  };
-
   const getSpeakerVoiceUrl = (name) => {
     const assignment = speakerAssignments[name];
     if (!assignment) return '';
-    if (assignment.source === 'library') {
-      // 🎭 Emotion sample (kalau dipilih) menang atas sample dasar.
-      return assignment.emotionAudioUrl || getLibraryUrlById(assignment.libraryId);
-    }
+    if (assignment.source === 'library') return getLibraryUrlById(assignment.libraryId);
     return assignment.customUrl || '';
   };
 
@@ -882,6 +922,46 @@ const TtsServer = () => {
     }
   };
 
+  const handleSwapTranslateLanguages = () => {
+    setTranslateSourceLang(translateTargetLang);
+    setTranslateTargetLang(translateSourceLang);
+    // Teksnya ikut ditukar juga kalau udah ada hasil -- biar user bisa
+    // langsung lanjut translate arah sebaliknya tanpa ngetik ulang.
+    setTranslateInput(translateOutput);
+    setTranslateOutput(translateInput);
+  };
+
+  const handleCopyTranslation = async () => {
+    if (!translateOutput) return;
+    try {
+      await navigator.clipboard.writeText(translateOutput);
+      setTranslateCopied(true);
+      setTimeout(() => setTranslateCopied(false), 1500);
+    } catch (e) {
+      console.error('[translate] Failed to copy:', e);
+    }
+  };
+
+  const handleTranslate = async () => {
+    if (!translateInput.trim()) return;
+    setTranslating(true);
+    setTranslationStatus('');
+    try {
+      const translated = await translateText(
+        translateInput,
+        translateSourceLang.code,
+        translateTargetLang.code,
+        (status) => setTranslationStatus(status)
+      );
+      setTranslateOutput(translated);
+      showToast('Translation complete!', 3000, 'success');
+    } catch (err) {
+      showToast(err.message || 'Could not translate the text.', 3500, 'error');
+    } finally {
+      setTranslating(false);
+    }
+  };
+
   const handleGenerateSpeech = async (e) => {
     e.preventDefault();
     if (isLimitReached) {
@@ -896,6 +976,10 @@ const TtsServer = () => {
     }
     if (mode === 'dialogue' && !dialogueScript) {
       showToast("Dialogue script cannot be empty!", 3500, 'warning');
+      return;
+    }
+    if (mode === 'emotion' && !emotionText) {
+      showToast("Text cannot be empty!", 3500, 'warning');
       return;
     }
 
@@ -930,14 +1014,41 @@ const TtsServer = () => {
         background_music: backgroundMusicUrl || undefined,
         music_volume_db: musicVolumeDb,
       };
+    } else if (mode === 'emotion') {
+      if (detectedEmotionSpeakerNames.length === 0) {
+        showToast('Please add at least one emotion voice using the 🎭 button.', 3500, 'warning');
+        return;
+      }
+      const missing = detectedEmotionSpeakerNames.filter((name) => !getEmotionSpeakerUrl(name));
+      if (missing.length > 0) {
+        showToast(`Please add a voice for: ${missing.join(', ')}`, 3500, 'warning');
+        return;
+      }
+
+      const speakerMap = {};
+      detectedEmotionSpeakerNames.forEach((name) => {
+        speakerMap[name] = getEmotionSpeakerUrl(name);
+      });
+
+      payload = {
+        // 🎭 Backend cuma kenal mode 'single'/'dialogue'. Karena Emotion
+        // mode sekarang bisa punya lebih dari satu speaker tag (sama
+        // persis format [Name]: text seperti Dialogue), dikirim sebagai
+        // 'dialogue' -- berlaku juga kalau cuma ada 1 speaker tag.
+        mode: 'dialogue',
+        text: emotionText,
+        speaker_map: speakerMap,
+        language,
+        speed: parseFloat(speed),
+        temperature: parseFloat(temperature),
+        output_format: outputFormat,
+        comma_pause_ms: commaPauseMs,
+        period_pause_ms: periodPauseMs,
+        background_music: backgroundMusicUrl || undefined,
+        music_volume_db: musicVolumeDb,
+      };
     } else {
-      // 🎭 Kalau user pilih emotion, pakai audio sample emotion itu
-      // (SUDAH termasuk suara asli speaker + gaya emosinya) -- fallback
-      // ke voice dasar kalau emotion masih "Default"/belum dipilih.
-      const finalSpeakerWavUrl =
-        voiceSource === 'library'
-          ? singleEmotionAudioUrl || getLibraryVoiceUrl()
-          : customUrlText;
+      const finalSpeakerWavUrl = voiceSource === 'library' ? getLibraryVoiceUrl() : customUrlText;
 
       if (!finalSpeakerWavUrl) {
         showToast('Please select a voice from library, enter a custom URL, or record your voice first.', 3500, 'warning');
@@ -1071,6 +1182,9 @@ const TtsServer = () => {
     if (mode === 'single') {
       setText('');
       setTimeout(() => textRef.current?.focus(), 0);
+    } else if (mode === 'emotion') {
+      setEmotionText('');
+      setTimeout(() => emotionTextRef.current?.focus(), 0);
     } else {
       setDialogueScript('');
       setTimeout(() => dialogueRef.current?.focus(), 0);
@@ -1081,11 +1195,10 @@ const TtsServer = () => {
     const pauseValue = e.target.value;
     if (!pauseValue) return;
 
-    const pauseTag = ` [pause ${pauseValue}s] `;
-    const isSingle = mode === 'single';
-    const currentText = isSingle ? text : dialogueScript;
-    const currentRef = isSingle ? textRef.current : dialogueRef.current;
-    const setTargetText = isSingle ? setText : setDialogueScript;
+    const pauseTag = `[pause ${parseFloat(pauseValue).toFixed(2)}s] `;
+    const currentText = mode === 'single' ? text : mode === 'emotion' ? emotionText : dialogueScript;
+    const currentRef = mode === 'single' ? textRef.current : mode === 'emotion' ? emotionTextRef.current : dialogueRef.current;
+    const setTargetText = mode === 'single' ? setText : mode === 'emotion' ? setEmotionText : setDialogueScript;
 
     if (currentText.length + pauseTag.length > MAX_CHARS) {
       showToast("Not enough text capacity for pause!", 3500, 'warning');
@@ -1109,9 +1222,8 @@ const TtsServer = () => {
     }
   };
 
-  const renderTextareaHeader = (currentTextLength) => (
+  const renderTextareaHeader = () => (
     <div className="textarea-header">
-      <span className="char-count">{currentTextLength} / {MAX_CHARS}</span>
       <div className="button-group">
         <select 
           onChange={handleInsertPause} 
@@ -1181,14 +1293,6 @@ const TtsServer = () => {
                   ))}
                 </select>
               </div>
-
-              {voiceSource === 'library' && selectedLibraryVoiceId && (
-                <EmotionPicker
-                  speakerId={selectedLibraryVoiceId}
-                  selectedEmotion={singleEmotionName}
-                  onSelectEmotion={handleSelectSingleEmotion}
-                />
-              )}
 
               <div className="divider">or</div>
 
@@ -1346,6 +1450,20 @@ const TtsServer = () => {
                 <span className="mode-text">Dialogue</span>
               </button>
               <button 
+                onClick={() => setMode('emotion')}
+                className={`mode-btn ${mode === 'emotion' ? 'active' : ''}`}
+              >
+                <span className="mode-icon">🎨</span>
+                <span className="mode-text">Emotion</span>
+              </button>
+              <button 
+                onClick={() => setMode('translate')}
+                className={`mode-btn ${mode === 'translate' ? 'active' : ''}`}
+              >
+                <span className="mode-icon">🌍</span>
+                <span className="mode-text">Translate</span>
+              </button>
+              <button 
                 onClick={() => setMode('subtitle')}
                 className={`mode-btn ${mode === 'subtitle' ? 'active' : ''}`}
               >
@@ -1423,24 +1541,176 @@ const TtsServer = () => {
                   </div>
                 )}
               </div>
+            ) : mode === 'emotion' ? (
+              <form onSubmit={handleGenerateSpeech} className="card">
+                <h2 className="card-title">🎨 Emotion Mode</h2>
+                <p className="card-description">Pick a voice by emotion, then type your text.</p>
+
+                <div className="setting-group">
+                  <div className="textarea-header emotion-textarea-header">
+                    <button
+                      type="button"
+                      className={`btn-toggle-emotion inline ${detectedEmotionSpeakerNames.length > 0 ? 'active' : ''}`}
+                      onClick={() => setShowEmotionVoicesInline((v) => !v)}
+                    >
+                      🎭 Add Emotion Voice{detectedEmotionSpeakerNames.length > 0 ? ` (${detectedEmotionSpeakerNames.length} added)` : ''}
+                    </button>
+                    <div className="button-group">
+                      <select
+                        onChange={handleInsertPause}
+                        defaultValue=""
+                        className="pause-select"
+                      >
+                        <option value="" disabled>⏸ Pause</option>
+                        <option value="0.5">0.50s</option>
+                        <option value="1">1.00s</option>
+                        <option value="2">2.00s</option>
+                        <option value="3">3.00s</option>
+                        <option value="4">4.00s</option>
+                        <option value="5">5.00s</option>
+                      </select>
+                      <button
+                        type="button"
+                        onClick={handleClearText}
+                        className="clear-btn"
+                      >
+                        🗑️ Clear
+                      </button>
+                    </div>
+                  </div>
+
+                  {showEmotionVoicesInline && (
+                    <EmotionVoiceSelector
+                      selectedVoiceId={null}
+                      onSelectVoice={(voice) => {
+                        // 🆕 Tag [Name]: selalu di-insert di BARIS BARU
+                        // (bukan nyambung sejajar) -- kalau textarea udah
+                        // ada isinya, tambah newline dulu sebelum tag.
+                        setEmotionText((prev) => {
+                          const trimmed = prev.replace(/\s+$/, '');
+                          const tag = `[${voice.name}]: `;
+                          return trimmed ? `${trimmed}\n${tag}` : tag;
+                        });
+                        setEmotionSpeakerVoices((prev) => ({ ...prev, [voice.name]: voice }));
+                        setShowEmotionVoicesInline(false);
+                        setTimeout(() => emotionTextRef.current?.focus(), 0);
+                      }}
+                    />
+                  )}
+
+                  <div className="textarea-wrapper">
+                    <textarea
+                      ref={emotionTextRef}
+                      value={emotionText}
+                      onChange={(e) => setEmotionText(e.target.value)}
+                      maxLength={MAX_CHARS}
+                      rows="10"
+                      className="form-textarea"
+                      placeholder="Type or paste your text here..."
+                    />
+                    <span className="char-count-overlay">{emotionText.length} / {MAX_CHARS}</span>
+                  </div>
+                </div>
+
+                <button 
+                  type="submit" 
+                  disabled={isLoading || checkingQuota}
+                  className={`btn-generate ${isLimitReached ? 'btn-upgrade' : 'btn-primary'} ${isLoading ? 'btn-loading' : ''}`}
+                >
+                  {checkingQuota ? 'Checking quota...' : isLoading ? `Generating... ${formatDuration(elapsedMs)}` : isLimitReached ? '⭐ Upgrade to Pro' : '🎵 Generate'}
+                </button>
+
+                {!checkingQuota && !isLimitReached && (
+                  <small style={{display: 'block', marginTop: '6px', color: '#b0bec5'}}>{generationCount} / {MAX_FREE_GENERATIONS} generations used</small>
+                )}
+              </form>
+            ) : mode === 'translate' ? (
+              <div className="card">
+                <h2 className="card-title">🌍 Translate</h2>
+                <p className="card-description">Translate your text into 200+ languages, powered by NLLB.</p>
+
+                <div className="translate-lang-row">
+                  <select
+                    className="form-select"
+                    value={translateSourceLang.code}
+                    onChange={(e) =>
+                      setTranslateSourceLang(NLLB_LANGUAGES.find((l) => l.code === e.target.value) || translateSourceLang)
+                    }
+                  >
+                    {NLLB_LANGUAGES.map((l) => (
+                      <option key={l.code} value={l.code}>{l.label}</option>
+                    ))}
+                  </select>
+
+                  <button
+                    type="button"
+                    className="translate-swap-btn"
+                    onClick={handleSwapTranslateLanguages}
+                    title="Swap languages"
+                  >
+                    ⇄
+                  </button>
+
+                  <select
+                    className="form-select"
+                    value={translateTargetLang.code}
+                    onChange={(e) =>
+                      setTranslateTargetLang(NLLB_LANGUAGES.find((l) => l.code === e.target.value) || translateTargetLang)
+                    }
+                  >
+                    {NLLB_LANGUAGES.map((l) => (
+                      <option key={l.code} value={l.code}>{l.label}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="setting-group">
+                  <div className="textarea-wrapper">
+                    <textarea
+                      value={translateInput}
+                      onChange={(e) => setTranslateInput(e.target.value)}
+                      maxLength={MAX_TRANSLATE_CHARS}
+                      rows="6"
+                      className="form-textarea"
+                      placeholder="Type or paste text to translate..."
+                    />
+                    <span className="char-count-overlay">{translateInput.length} / {MAX_TRANSLATE_CHARS}</span>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleTranslate}
+                  disabled={translating || !translateInput.trim()}
+                  className={`btn-generate btn-primary ${translating ? 'btn-loading' : ''}`}
+                >
+                  {translating ? `Translating... ${translationStatus || ''}` : '🌍 Translate'}
+                </button>
+
+                <div className="setting-group" style={{ marginTop: '16px' }}>
+                  <div className="textarea-header">
+                    <button
+                      type="button"
+                      onClick={handleCopyTranslation}
+                      disabled={!translateOutput}
+                      className="clear-btn"
+                      style={{ color: translateCopied ? '#10b981' : undefined, borderColor: translateCopied ? '#10b981' : undefined }}
+                    >
+                      {translateCopied ? '✓ Copied' : '📋 Copy'}
+                    </button>
+                  </div>
+                  <textarea
+                    value={translateOutput}
+                    readOnly
+                    rows="6"
+                    className="form-textarea"
+                    placeholder="Translation will appear here..."
+                  />
+                </div>
+              </div>
             ) : (
               <form onSubmit={handleGenerateSpeech} className="card">
                 <h2 className="card-title">{mode === 'single' ? '🎙️ Single Voice' : '🎭 Dialogue Mode'}</h2>
-
-                <div className="setting-group">
-                  <label>{mode === 'single' ? 'Enter Text' : 'Dialogue Script'}</label>
-                  {renderTextareaHeader(mode === 'single' ? text.length : dialogueScript.length)}
-                  
-                  <textarea 
-                    ref={mode === 'single' ? textRef : dialogueRef}
-                    value={mode === 'single' ? text : dialogueScript}
-                    onChange={(e) => mode === 'single' ? setText(e.target.value) : setDialogueScript(e.target.value)}
-                    maxLength={MAX_CHARS}
-                    rows="10" 
-                    className="form-textarea"
-                    placeholder={mode === 'single' ? 'Type or paste your text here...' : '[Name]: Dialogue text...\n[Name2]: Response...'}
-                  />
-                </div>
 
                 {mode === 'dialogue' && detectedSpeakerNames.length > 0 && (
                   <div className="speakers-box">
@@ -1467,20 +1737,29 @@ const TtsServer = () => {
                             onChange={(e) => handleAssignSpeakerCustomUrl(name, e.target.value)}
                             className="form-input"
                           />
-                          {speakerAssignments[name]?.source === 'library' && speakerAssignments[name]?.libraryId && (
-                            <EmotionPicker
-                              speakerId={speakerAssignments[name].libraryId}
-                              selectedEmotion={speakerAssignments[name]?.emotionName || null}
-                              onSelectEmotion={(emotionName, audioUrl) =>
-                                handleSelectSpeakerEmotion(name, emotionName, audioUrl)
-                              }
-                            />
-                          )}
                         </div>
                       );
                     })}
                   </div>
                 )}
+
+                <div className="setting-group">
+                  {renderTextareaHeader()}
+                  
+                  <div className="textarea-wrapper">
+                    <textarea 
+                      ref={mode === 'single' ? textRef : dialogueRef}
+                      value={mode === 'single' ? text : dialogueScript}
+                      onChange={(e) => mode === 'single' ? setText(e.target.value) : setDialogueScript(e.target.value)}
+                      maxLength={MAX_CHARS}
+                      rows="10" 
+                      className="form-textarea"
+                      placeholder={mode === 'single' ? 'Type or paste your text here...' : '[Name]: Dialogue text...\n[Name2]: Response...'}
+                    />
+                    <span className="char-count-overlay">{(mode === 'single' ? text.length : dialogueScript.length)} / {MAX_CHARS}</span>
+                  </div>
+                </div>
+
 
                 <button 
                   type="submit" 

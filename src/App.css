@@ -499,9 +499,10 @@ button {
     grid-template-columns: 1fr;
   }
   
-  /* Urutan tata letak di mobile: Navigasi & Main dulu, lalu Voice, lalu Settings */
-  .sidebar-left { order: 2; }
-  .content-main { order: 1; }
+  /* Urutan tata letak di mobile: Select Voice dulu, baru Main (Single
+     Voice/Dialogue/dst), baru Voice Settings di paling bawah. */
+  .sidebar-left { order: 1; }
+  .content-main { order: 2; }
   .sidebar-right { order: 3; }
 }
 

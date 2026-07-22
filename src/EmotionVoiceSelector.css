@@ -1,0 +1,209 @@
+.emo-voice-container {
+  margin-top: 14px;
+}
+
+.emo-voice-loading,
+.emo-voice-hint {
+  font-size: 12px;
+  color: #5b5875;
+  font-style: italic;
+  padding: 10px 0;
+}
+
+.emo-voice-label {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  color: #8f8cab;
+  margin-bottom: 8px;
+}
+
+.emo-voice-tag-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.emo-voice-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 16px;
+  padding: 8px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #8f8cab;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.emo-voice-tag:hover {
+  border-color: rgba(0, 194, 255, 0.35);
+}
+
+.emo-voice-tag.active {
+  background: #00c2ff;
+  border-color: #00c2ff;
+  color: #0a0f1e;
+}
+
+.emo-voice-tag-emoji {
+  font-size: 15px;
+}
+
+.emo-voice-tag-count {
+  font-size: 10px;
+  opacity: 0.7;
+}
+
+.emo-voice-list {
+  margin-top: 16px;
+}
+
+.emo-voice-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 12px;
+  padding: 10px 12px;
+  margin-bottom: 8px;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.emo-voice-row:hover {
+  border-color: rgba(0, 194, 255, 0.3);
+}
+
+.emo-voice-row.selected {
+  background: #00c2ff;
+  border-color: #00c2ff;
+}
+
+.emo-voice-preview-btn {
+  width: 28px;
+  height: 28px;
+  border-radius: 14px;
+  background: rgba(0, 194, 255, 0.12);
+  border: none;
+  color: #00c2ff;
+  font-size: 12px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.emo-voice-row.selected .emo-voice-preview-btn {
+  background: rgba(10, 15, 30, 0.15);
+  color: #0a0f1e;
+}
+
+.emo-voice-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.emo-voice-name {
+  color: #fff;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.emo-voice-row.selected .emo-voice-name {
+  color: #0a0f1e;
+}
+
+.emo-voice-meta {
+  color: #8f8cab;
+  font-size: 12px;
+  margin-top: 2px;
+}
+
+.emo-voice-row.selected .emo-voice-meta {
+  color: #0a0f1e;
+  opacity: 0.75;
+}
+
+.emo-voice-check {
+  color: #0a0f1e;
+  font-weight: 800;
+  font-size: 16px;
+}
+
+.btn-toggle-emotion {
+  width: 100%;
+  text-align: left;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #8f8cab;
+  cursor: pointer;
+  margin-top: 8px;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.btn-toggle-emotion:hover {
+  border-color: rgba(0, 194, 255, 0.35);
+}
+
+.btn-toggle-emotion.active {
+  background: rgba(0, 194, 255, 0.12);
+  border-color: #00c2ff;
+  color: #00c2ff;
+}
+
+/* 🎨 Emotion mode -- toggle voice sejajar dengan char-count & Clear
+   button di baris yang sama (di atas textarea), bukan di sidebar. */
+.emotion-textarea-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+/* 🔧 Pause + Clear selalu nempel di pojok kanan atas (single/dialogue
+   cuma punya button-group ini sendirian di headernya -- emotion mode
+   sudah diatur lewat justify-content: space-between di atas). */
+.textarea-header {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.btn-toggle-emotion.inline {
+  width: auto;
+  margin-top: 0;
+  margin-right: auto;
+  white-space: nowrap;
+}
+
+/* 🔢 Char count dipindah ke DALAM textarea, pojok kanan bawah -- bukan
+   di baris header lagi. Wrapper perlu position:relative supaya overlay
+   nempel di textarea yang ada di dalamnya. */
+.textarea-wrapper {
+  position: relative;
+}
+
+.textarea-wrapper .form-textarea {
+  padding-bottom: 28px;
+}
+
+.char-count-overlay {
+  position: absolute;
+  bottom: 10px;
+  right: 14px;
+  font-size: 11px;
+  color: #8f8cab;
+  background: rgba(10, 15, 30, 0.55);
+  padding: 2px 8px;
+  border-radius: 8px;
+  pointer-events: none;
+}
