@@ -1,26 +1,16 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { Client, Functions, Databases, Storage, Query, Account } from 'appwrite';
+import { Query } from 'appwrite';
 import { segmentsToPlainText, segmentsToSrt, segmentsToVtt } from './subtitleUtils';
 import './App.css';
 import ChatBot from './components/ChatBot';
-
-// Appwrite Configuration
-const APPWRITE_ENDPOINT = 'https://fra.cloud.appwrite.io/v1';
-const APPWRITE_PROJECT_ID = '6a3a48a1003d333b0268';
-
-const client = new Client()
-    .setEndpoint(APPWRITE_ENDPOINT)
-    .setProject(APPWRITE_PROJECT_ID);
-
-const appwriteFunctions = new Functions(client);
-const databases = new Databases(client);
-const storage = new Storage(client);
-const account = new Account(client);
-const FUNCTION_ID = '6a4bedd10009fe338821';
+import EmotionPicker from './EmotionPicker';
+import { account, appwriteFunctions, databases, storage, APPWRITE_ENDPOINT, APPWRITE_PROJECT_ID } from './appwriteClient';
 
 function generateFileId() {
   return `f${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`;
 }
+
+const FUNCTION_ID = '6a4bedd10009fe338821';
 
 // Database & Storage Configuration
 const DATABASE_ID = 'naratorai';
@@ -78,6 +68,10 @@ const TtsServer = () => {
   const [voiceLibrary, setVoiceLibrary] = useState([]);
   const [selectedLibraryVoiceId, setSelectedLibraryVoiceId] = useState('');
   const [loadingLibrary, setLoadingLibrary] = useState(true);
+  // 🎭 Emotion (opsional) buat Single mode -- di-reset tiap kali ganti
+  // voice, karena emotion sample terikat ke speaker_id tertentu.
+  const [singleEmotionName, setSingleEmotionName] = useState(null);
+  const [singleEmotionAudioUrl, setSingleEmotionAudioUrl] = useState(null);
 
   const [isUploadingRecording, setIsUploadingRecording] = useState(false);
   const [isUploadingFile, setIsUploadingFile] = useState(false);
@@ -257,6 +251,14 @@ const TtsServer = () => {
     const voiceId = e.target.value;
     setSelectedLibraryVoiceId(voiceId);
     setVoiceSource(voiceId ? 'library' : '');
+    // Ganti voice -- emotion lama (kalau ada) udah gak relevan.
+    setSingleEmotionName(null);
+    setSingleEmotionAudioUrl(null);
+  };
+
+  const handleSelectSingleEmotion = (emotionName, audioUrl) => {
+    setSingleEmotionName(emotionName);
+    setSingleEmotionAudioUrl(audioUrl);
   };
 
   const getLibraryVoiceUrl = () => {
@@ -274,7 +276,9 @@ const TtsServer = () => {
   const handleAssignSpeakerLibrary = (name, libraryId) => {
     setSpeakerAssignments((prev) => ({
       ...prev,
-      [name]: { ...(prev[name] || {}), source: 'library', libraryId },
+      // Ganti voice buat speaker ini -- emotion lama (kalau ada) udah
+      // gak relevan buat voice yang baru, jadi ikut di-reset.
+      [name]: { ...(prev[name] || {}), source: 'library', libraryId, emotionName: null, emotionAudioUrl: null },
     }));
   };
 
@@ -285,11 +289,19 @@ const TtsServer = () => {
     }));
   };
 
+  const handleSelectSpeakerEmotion = (name, emotionName, audioUrl) => {
+    setSpeakerAssignments((prev) => ({
+      ...prev,
+      [name]: { ...(prev[name] || {}), emotionName, emotionAudioUrl: audioUrl },
+    }));
+  };
+
   const getSpeakerVoiceUrl = (name) => {
     const assignment = speakerAssignments[name];
     if (!assignment) return '';
     if (assignment.source === 'library') {
-      return getLibraryUrlById(assignment.libraryId);
+      // 🎭 Emotion sample (kalau dipilih) menang atas sample dasar.
+      return assignment.emotionAudioUrl || getLibraryUrlById(assignment.libraryId);
     }
     return assignment.customUrl || '';
   };
@@ -919,7 +931,13 @@ const TtsServer = () => {
         music_volume_db: musicVolumeDb,
       };
     } else {
-      const finalSpeakerWavUrl = voiceSource === 'library' ? getLibraryVoiceUrl() : customUrlText;
+      // 🎭 Kalau user pilih emotion, pakai audio sample emotion itu
+      // (SUDAH termasuk suara asli speaker + gaya emosinya) -- fallback
+      // ke voice dasar kalau emotion masih "Default"/belum dipilih.
+      const finalSpeakerWavUrl =
+        voiceSource === 'library'
+          ? singleEmotionAudioUrl || getLibraryVoiceUrl()
+          : customUrlText;
 
       if (!finalSpeakerWavUrl) {
         showToast('Please select a voice from library, enter a custom URL, or record your voice first.', 3500, 'warning');
@@ -1163,6 +1181,14 @@ const TtsServer = () => {
                   ))}
                 </select>
               </div>
+
+              {voiceSource === 'library' && selectedLibraryVoiceId && (
+                <EmotionPicker
+                  speakerId={selectedLibraryVoiceId}
+                  selectedEmotion={singleEmotionName}
+                  onSelectEmotion={handleSelectSingleEmotion}
+                />
+              )}
 
               <div className="divider">or</div>
 
@@ -1441,6 +1467,15 @@ const TtsServer = () => {
                             onChange={(e) => handleAssignSpeakerCustomUrl(name, e.target.value)}
                             className="form-input"
                           />
+                          {speakerAssignments[name]?.source === 'library' && speakerAssignments[name]?.libraryId && (
+                            <EmotionPicker
+                              speakerId={speakerAssignments[name].libraryId}
+                              selectedEmotion={speakerAssignments[name]?.emotionName || null}
+                              onSelectEmotion={(emotionName, audioUrl) =>
+                                handleSelectSpeakerEmotion(name, emotionName, audioUrl)
+                              }
+                            />
+                          )}
                         </div>
                       );
                     })}
