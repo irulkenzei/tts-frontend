@@ -7,7 +7,7 @@ import EmotionVoiceSelector from './EmotionVoiceSelector';
 import { account, appwriteFunctions, databases, storage, APPWRITE_ENDPOINT, APPWRITE_PROJECT_ID } from './appwriteClient';
 import { NLLB_LANGUAGES } from './nllbLanguages';
 import { translateText } from './translateService';
-import './Translate.css';
+import './Translate.css'; 
 
 function generateFileId() {
   return `f${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`;
