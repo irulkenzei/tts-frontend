@@ -25,7 +25,24 @@ export default function LoginPage() {
 
     setIsProcessing(true);
     try {
-      await account.createEmailPasswordSession(email.trim(), password);
+      // 🔧 FIX: Appwrite menolak bikin sesi baru kalau udah ada sesi aktif
+      // ("Creation of a session is prohibited when a session is active")
+      // -- SAMA PERSIS isu yang sudah didokumentasikan panjang lebar di
+      // mobile app (services/appwrite.ts). Browser bisa aja masih nyimpen
+      // sesi lama (mis. abis login sebagai akun lain), jadi logout dulu
+      // di sini -- aman di-panggil walau sebenernya lagi gak ada sesi
+      // aktif (tinggal di-catch, diabaikan).
+      try {
+        await account.deleteSession('current');
+      } catch {
+        // gak ada sesi aktif -- aman, lanjut aja
+      }
+
+      // 🔧 FIX: SDK 'appwrite' versi 13.0.2 (lihat package.json) BELUM
+      // punya method createEmailPasswordSession -- itu baru ada mulai
+      // versi 14.0.1. Untuk versi ini, nama method-nya createEmailSession
+      // (parameter tetap positional, sama seperti sebelumnya).
+      await account.createEmailSession(email.trim(), password);
       window.location.href = '/account';
     } catch (err) {
       console.error('[login] error:', err);

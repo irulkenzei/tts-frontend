@@ -36,7 +36,20 @@ export default function CreateAccountPage() {
     try {
       const userId = ID.unique();
       await account.create(userId, email.trim(), password, name.trim());
-      await account.createEmailPasswordSession(email.trim(), password);
+
+      // 🔧 FIX: sama persis pola LoginPage.jsx -- logout dulu sesi lama
+      // (kalau ada) sebelum bikin sesi baru, biar tidak kena error
+      // "Creation of a session is prohibited when a session is active".
+      try {
+        await account.deleteSession('current');
+      } catch {
+        // gak ada sesi aktif -- aman, lanjut aja
+      }
+
+      // 🔧 FIX: sama persis kasus LoginPage.jsx -- SDK 'appwrite' versi
+      // 13.0.2 belum punya createEmailPasswordSession (baru ada mulai
+      // 14.0.1), nama method yang benar di versi ini createEmailSession.
+      await account.createEmailSession(email.trim(), password);
 
       // 🔑 Sama persis pola mobile (ProfileScreen.tsx) -- dokumen di
       // registered_users ini yang menandakan "user beneran login", bukan
