@@ -149,6 +149,7 @@
   border-color: var(--primary-color, #00d4ff);
   color: var(--primary-color, #00d4ff);
 }
+
 /* Layout Wrapper Utama */
 .voices-page-wrapper {
   display: flex;
@@ -247,4 +248,4 @@
     justify-content: center;
     gap: 16px;
   }
-}
+
