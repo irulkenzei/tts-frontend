@@ -1,5 +1,6 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
+import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import App from './App.jsx'
 import AdminListings from './AdminListings.jsx'
 import PublicVoiceListings from './PublicVoiceListings.jsx'
@@ -11,21 +12,27 @@ import CreateAccountPage from './CreateAccountPage.jsx'
 import LoginPage from './LoginPage.jsx'
 import AuthCallbackPage from './AuthCallbackPage.jsx'
 import AccountPage from './AccountPage.jsx'
-const path = window.location.pathname
-const RootComponent =
-  path === '/admin' ? AdminListings
-  : path === '/voices' ? PublicVoiceListings
-  : path === '/reset-password' ? ResetPassword
-  : path === '/admin-emotions' ? AdminDataManager
-  : path === '/pricing' ? ProPricingPage
-  : path === '/pricing-success' ? PricingSuccessPage
-  : path === '/signup' ? CreateAccountPage
-  : path === '/login' ? LoginPage
-  : path === '/auth-callback' ? AuthCallbackPage
-  : path === '/account' ? AccountPage
-  : App
+
+// 🔧 Diganti dari pathname-matching manual (window.location.pathname)
+// ke react-router-dom -- perilaku SAMA PERSIS seperti sebelumnya:
+// tiap path spesifik render komponennya masing-masing, path lain
+// (termasuk "/") fallback ke <App /> lewat wildcard route "*".
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
-    <RootComponent />
+    <BrowserRouter>
+      <Routes>
+        <Route path="/admin" element={<AdminListings />} />
+        <Route path="/voices" element={<PublicVoiceListings />} />
+        <Route path="/reset-password" element={<ResetPassword />} />
+        <Route path="/admin-emotions" element={<AdminDataManager />} />
+        <Route path="/pricing" element={<ProPricingPage />} />
+        <Route path="/pricing-success" element={<PricingSuccessPage />} />
+        <Route path="/signup" element={<CreateAccountPage />} />
+        <Route path="/login" element={<LoginPage />} />
+        <Route path="/auth-callback" element={<AuthCallbackPage />} />
+        <Route path="/account" element={<AccountPage />} />
+        <Route path="*" element={<App />} />
+      </Routes>
+    </BrowserRouter>
   </React.StrictMode>,
 )
