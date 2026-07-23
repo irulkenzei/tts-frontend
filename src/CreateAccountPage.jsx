@@ -1,130 +1,127 @@
-import { useState } from 'react';
-import { ID } from 'appwrite';
-import { account, databases, DATABASE_ID, REGISTERED_USERS_COLLECTION_ID } from './services/appwrite';
+import { useEffect, useState } from 'react';
+import { account } from './services/appwrite';
 import './AuthPages.css';
 
-export default function CreateAccountPage() {
-  const [name, setName] = useState('');
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [isProcessing, setIsProcessing] = useState(false);
+// URL endpoint HTTP function delete-account-web (bukan lewat SDK
+// createExecution, lebih simpel pakai fetch biasa + kirim JWT).
+const DELETE_ACCOUNT_FUNCTION_URL = import.meta.env.VITE_DELETE_ACCOUNT_FUNCTION_URL;
+
+export default function AccountPage() {
+  const [user, setUser] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [showConfirm, setShowConfirm] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [error, setError] = useState('');
 
-  // 🔑 OAuth -- redirect penuh ke provider, Appwrite yang urus callback-nya.
-  // successUrl mengarah ke /auth-callback, yang tugasnya cuma pastikan
-  // dokumen registered_users ada, lalu redirect ke /account.
-  const handleOAuth = (provider) => {
-    const successUrl = `${window.location.origin}/auth-callback`;
-    const failureUrl = `${window.location.origin}/signup?error=oauth_failed`;
-    account.createOAuth2Session(provider, successUrl, failureUrl);
+  useEffect(() => {
+    (async () => {
+      try {
+        const currentUser = await account.get();
+        setUser(currentUser);
+      } catch {
+        // Belum login -- lempar ke halaman login.
+        window.location.href = '/login';
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, []);
+
+  const handleLogout = async () => {
+    // 🔧 FIX: sebelumnya kalau deleteSession('current') gagal karena
+    // alasan apapun (sesi udah dianggap invalid di server, race condition,
+    // dll), promise REJECT tanpa ke-catch -- window.location.href
+    // gak pernah kejalan, halaman diam aja kayak logout "gak ngefek".
+    // Sekarang redirect TETAP jalan apapun hasilnya -- tujuan akhir user
+    // (keluar dari akun) tetap tercapai walau deleteSession-nya sendiri
+    // gagal (sesi lokal browser toh mau dianggap "keluar").
+    try {
+      await account.deleteSession('current');
+    } catch (err) {
+      console.error('[logout] deleteSession failed (redirecting anyway):', err);
+    }
+    window.location.href = '/';
   };
 
-  const handleEmailSignup = async (e) => {
-    e.preventDefault();
+  const handleDeleteAccount = async () => {
+    setIsDeleting(true);
     setError('');
-
-    if (!name.trim() || !email.trim() || !password) {
-      setError('Please fill in all fields.');
-      return;
-    }
-    if (password.length < 8) {
-      setError('Password must be at least 8 characters.');
-      return;
-    }
-
-    setIsProcessing(true);
     try {
-      const userId = ID.unique();
-      await account.create(userId, email.trim(), password, name.trim());
+      // 🔐 Kirim JWT (bukan userId mentah) -- function verifikasi JWT ini
+      // ke server buat mastiin yang minta hapus akun itu BENERAN pemilik
+      // akun itu sendiri, bukan orang lain nebak-nebak userId.
+      const jwt = await account.createJWT();
 
-      // 🔧 FIX: sama persis pola LoginPage.jsx -- logout dulu sesi lama
-      // (kalau ada) sebelum bikin sesi baru, biar tidak kena error
-      // "Creation of a session is prohibited when a session is active".
+      const res = await fetch(DELETE_ACCOUNT_FUNCTION_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ jwt: jwt.jwt }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to delete account.');
+      }
+
+      // Akun sudah dihapus di server -- bersihkan sesi lokal juga.
       try {
         await account.deleteSession('current');
       } catch {
-        // gak ada sesi aktif -- aman, lanjut aja
+        // Sesi kemungkinan udah otomatis invalid karena user-nya udah
+        // dihapus -- aman diabaikan.
       }
 
-      // 🔧 FIX: sama persis kasus LoginPage.jsx -- SDK 'appwrite' versi
-      // 13.0.2 belum punya createEmailPasswordSession (baru ada mulai
-      // 14.0.1), nama method yang benar di versi ini createEmailSession.
-      await account.createEmailSession(email.trim(), password);
-
-      // 🔑 Sama persis pola mobile (ProfileScreen.tsx) -- dokumen di
-      // registered_users ini yang menandakan "user beneran login", bukan
-      // anonymous. Kalau nanti user yang sama login di app mobile, mereka
-      // otomatis dikenali sebagai user terdaftar juga.
-      await databases.createDocument(DATABASE_ID, REGISTERED_USERS_COLLECTION_ID, userId, {
-        name: name.trim(),
-        email: email.trim(),
-        avatar_url: null,
-      });
-
-      window.location.href = '/account';
+      window.location.href = '/?accountDeleted=1';
     } catch (err) {
-      console.error('[signup] error:', err);
-      setError(err.message || 'Failed to create account. Please try again.');
-      setIsProcessing(false);
+      console.error('[delete-account] error:', err);
+      setError(err.message || 'Something went wrong. Please try again or contact support.');
+      setIsDeleting(false);
     }
   };
+
+  if (loading) {
+    return (
+      <div className="auth-container">
+        <div className="auth-card"><p className="auth-subtitle">Loading...</p></div>
+      </div>
+    );
+  }
 
   return (
     <div className="auth-container">
       <div className="auth-card">
-        <h1 className="auth-title">Create Account</h1>
-        <p className="auth-subtitle">Sync your Narator AI data across devices.</p>
+        <h1 className="auth-title">My Account</h1>
+        <p className="auth-subtitle">{user?.name || 'Narator AI user'}</p>
+        <p className="auth-subtitle" style={{ opacity: 0.7 }}>{user?.email}</p>
 
-        <div className="oauth-buttons">
-          <button className="oauth-btn oauth-google" onClick={() => handleOAuth('google')}>
-            Continue with Google
-          </button>
-          <button className="oauth-btn oauth-apple" onClick={() => handleOAuth('apple')}>
-            Continue with Apple
-          </button>
-          <button className="oauth-btn oauth-facebook" onClick={() => handleOAuth('facebook')}>
-            Continue with Facebook
-          </button>
+        <button className="auth-submit-btn" style={{ marginTop: '24px' }} onClick={handleLogout}>
+          Log Out
+        </button>
+
+        <div className="danger-zone">
+          <h2 className="danger-zone-title">Danger Zone</h2>
+          {!showConfirm ? (
+            <button className="danger-btn" onClick={() => setShowConfirm(true)}>
+              Delete Account
+            </button>
+          ) : (
+            <div>
+              <p className="auth-error" style={{ marginBottom: '12px' }}>
+                This will permanently delete your account and all associated data (generated audio, translations,
+                cloned voices, subscription history). This cannot be undone.
+              </p>
+              {error && <p className="auth-error">{error}</p>}
+              <div style={{ display: 'flex', gap: '12px' }}>
+                <button className="danger-btn" onClick={handleDeleteAccount} disabled={isDeleting}>
+                  {isDeleting ? 'Deleting...' : 'Yes, delete my account'}
+                </button>
+                <button className="auth-submit-btn" onClick={() => setShowConfirm(false)} disabled={isDeleting}>
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
         </div>
-
-        <div className="auth-divider"><span>or</span></div>
-
-        <form onSubmit={handleEmailSignup} className="auth-form">
-          <input
-            type="text"
-            placeholder="Full name"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            className="auth-input"
-            disabled={isProcessing}
-          />
-          <input
-            type="email"
-            placeholder="Email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            className="auth-input"
-            disabled={isProcessing}
-          />
-          <input
-            type="password"
-            placeholder="Password (min. 8 characters)"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            className="auth-input"
-            disabled={isProcessing}
-          />
-
-          {error && <p className="auth-error">{error}</p>}
-
-          <button type="submit" className="auth-submit-btn" disabled={isProcessing}>
-            {isProcessing ? 'Creating account...' : 'Create Account'}
-          </button>
-        </form>
-
-        <p className="auth-switch">
-          Already have an account? <a href="/login">Log in</a>
-        </p>
       </div>
     </div>
   );
