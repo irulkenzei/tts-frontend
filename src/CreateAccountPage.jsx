@@ -11,7 +11,7 @@ export default function AccountPage() {
   const [loading, setLoading] = useState(true);
   const [showConfirm, setShowConfirm] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
-  const [error, setError] = useState('');
+  const [error, setError] = useState(''); 
 
   useEffect(() => {
     (async () => {
