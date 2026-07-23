@@ -1,30 +1,31 @@
 .auth-container {
   min-height: 100vh;
-  background: #06050a;
+  background: var(--bg-primary, #06050a);
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 20px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
 }
 
 .auth-card {
   width: 100%;
   max-width: 420px;
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 20px;
+  background: var(--bg-secondary, rgba(255, 255, 255, 0.03));
+  border: 1px solid var(--border-color, rgba(255, 255, 255, 0.08));
+  border-radius: var(--radius-lg, 20px);
   padding: 32px;
 }
 
 .auth-title {
-  color: #fff;
+  color: var(--text-primary, #fff);
   font-size: 26px;
   font-weight: 800;
   margin: 0 0 6px;
 }
 
 .auth-subtitle {
-  color: #8f8cab;
+  color: var(--text-secondary, #8f8cab);
   font-size: 14px;
   margin: 0 0 24px;
 }
@@ -38,14 +39,15 @@
 
 .oauth-btn {
   padding: 12px 16px;
-  border-radius: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  background: rgba(255, 255, 255, 0.05);
-  color: #fff;
+  border-radius: var(--radius-md, 12px);
+  border: 1px solid var(--border-color, rgba(255, 255, 255, 0.15));
+  background: var(--bg-tertiary, rgba(255, 255, 255, 0.05));
+  color: var(--text-primary, #fff);
   font-size: 14px;
   font-weight: 600;
   cursor: pointer;
   font-family: inherit;
+  transition: var(--transition-fast, all 0.2s ease);
 }
 
 .oauth-btn:hover {
@@ -56,7 +58,7 @@
   display: flex;
   align-items: center;
   text-align: center;
-  color: #5b5875;
+  color: var(--text-secondary, #5b5875);
   font-size: 12px;
   margin: 20px 0;
 }
@@ -64,7 +66,7 @@
 .auth-divider::after {
   content: '';
   flex: 1;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  border-bottom: 1px solid var(--border-color, rgba(255, 255, 255, 0.1));
 }
 .auth-divider span {
   padding: 0 12px;
@@ -77,53 +79,58 @@
 }
 
 .auth-input {
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 12px;
+  background: var(--bg-tertiary, rgba(255, 255, 255, 0.05));
+  border: 1px solid var(--border-color, rgba(255, 255, 255, 0.1));
+  border-radius: var(--radius-md, 12px);
   padding: 12px 16px;
-  color: #fff;
+  color: var(--text-primary, #fff);
   font-size: 14px;
   outline: none;
   font-family: inherit;
 }
 .auth-input::placeholder {
-  color: #5b5875;
+  color: var(--text-secondary, #5b5875);
 }
 .auth-input:focus {
-  border-color: #00c2ff;
+  border-color: var(--primary-color, #00c2ff);
 }
 
 .auth-error {
-  color: #ff3b30;
+  color: var(--danger-color, #ff3b30);
   font-size: 13px;
   margin: 0;
 }
 
 .auth-submit-btn {
-  background: #00c2ff;
+  background: var(--primary-color, #00c2ff);
   color: #000;
   border: none;
-  border-radius: 12px;
+  border-radius: var(--radius-md, 12px);
   padding: 14px;
   font-size: 15px;
   font-weight: 700;
   cursor: pointer;
   text-align: center;
   font-family: inherit;
+  transition: var(--transition-fast, all 0.2s ease);
+}
+.auth-submit-btn:hover {
+  box-shadow: 0 0 20px rgba(0, 194, 255, 0.35);
 }
 .auth-submit-btn:disabled {
   opacity: 0.6;
   cursor: not-allowed;
+  box-shadow: none;
 }
 
 .auth-switch {
-  color: #8f8cab;
+  color: var(--text-secondary, #8f8cab);
   font-size: 13px;
   text-align: center;
   margin-top: 20px;
 }
 .auth-switch a {
-  color: #00c2ff;
+  color: var(--primary-color, #00c2ff);
   text-decoration: none;
 }
 
@@ -133,7 +140,7 @@
   border-top: 1px solid rgba(255, 59, 48, 0.2);
 }
 .danger-zone-title {
-  color: #ff3b30;
+  color: var(--danger-color, #ff3b30);
   font-size: 13px;
   font-weight: 700;
   text-transform: uppercase;
@@ -142,11 +149,16 @@
 .danger-btn {
   background: rgba(255, 59, 48, 0.1);
   border: 1px solid rgba(255, 59, 48, 0.4);
-  color: #ff3b30;
-  border-radius: 12px;
+  color: var(--danger-color, #ff3b30);
+  border-radius: var(--radius-md, 12px);
   padding: 12px 16px;
   font-size: 14px;
   font-weight: 700;
   cursor: pointer;
   font-family: inherit;
+  transition: var(--transition-fast, all 0.2s ease);
+}
+.danger-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }

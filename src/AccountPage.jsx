@@ -21,7 +21,7 @@ export default function AccountPage() {
         const currentUser = await account.get();
         setUser(currentUser);
       } catch {
-        navigate('/login'); // Ganti window.location.href dengan navigate
+        navigate('/login');
       } finally {
         setLoading(false);
       }
