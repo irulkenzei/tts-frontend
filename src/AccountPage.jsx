@@ -1,9 +1,8 @@
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom'; // Tambahkan ini
 import { account } from './services/appwrite';
 import './AuthPages.css';
 
-// URL endpoint HTTP function delete-account-web (bukan lewat SDK
-// createExecution, lebih simpel pakai fetch biasa + kirim JWT).
 const DELETE_ACCOUNT_FUNCTION_URL = import.meta.env.VITE_DELETE_ACCOUNT_FUNCTION_URL;
 
 export default function AccountPage() {
@@ -12,6 +11,9 @@ export default function AccountPage() {
   const [showConfirm, setShowConfirm] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [error, setError] = useState('');
+  
+  // Inisialisasi navigasi
+  const navigate = useNavigate();
 
   useEffect(() => {
     (async () => {
@@ -19,52 +21,26 @@ export default function AccountPage() {
         const currentUser = await account.get();
         setUser(currentUser);
       } catch {
-        // Belum login -- lempar ke halaman login.
-        window.location.href = '/login';
+        navigate('/login'); // Ganti window.location.href dengan navigate
       } finally {
         setLoading(false);
       }
     })();
-  }, []);
+  }, [navigate]);
 
+  // PERBAIKAN FUNGSI LOGOUT DI SINI
   const handleLogout = async () => {
-    await account.deleteSession('current');
-    window.location.href = '/';
-  };
-
-  const handleDeleteAccount = async () => {
-    setIsDeleting(true);
-    setError('');
     try {
-      // 🔐 Kirim JWT (bukan userId mentah) -- function verifikasi JWT ini
-      // ke server buat mastiin yang minta hapus akun itu BENERAN pemilik
-      // akun itu sendiri, bukan orang lain nebak-nebak userId.
-      const jwt = await account.createJWT();
-
-      const res = await fetch(DELETE_ACCOUNT_FUNCTION_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ jwt: jwt.jwt }),
-      });
-
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || 'Failed to delete account.');
-      }
-
-      // Akun sudah dihapus di server -- bersihkan sesi lokal juga.
-      try {
-        await account.deleteSession('current');
-      } catch {
-        // Sesi kemungkinan udah otomatis invalid karena user-nya udah
-        // dihapus -- aman diabaikan.
-      }
-
-      window.location.href = '/?accountDeleted=1';
-    } catch (err) {
-      console.error('[delete-account] error:', err);
-      setError(err.message || 'Something went wrong. Please try again or contact support.');
-      setIsDeleting(false);
+      // 1. Coba hapus sesi di server Appwrite
+      await account.deleteSession('current');
+    } catch (error) {
+      console.error('[logout] error:', error);
+      // Meskipun error, kita tetap paksa user keluar secara lokal
+    } finally {
+      // 2. Kosongkan state
+      setUser(null);
+      // 3. Pindah ke halaman login (bukan beranda '/')
+      navigate('/login');
     }
   };
 
