@@ -3,8 +3,8 @@ import { Client, Functions } from 'appwrite';
 import {
   account, databases, ID, Query,
   DATABASE_ID, APPWRITE_ENDPOINT, APPWRITE_PROJECT_ID, UPLOAD_TO_R2_FUNCTION_ID,
-} from './appwriteConfig';
-import './AdminListings.css';
+} from '../services/appwriteConfig';
+import '../styles/AdminListings.css';
 
 const SPEAKERS_COLLECTION_ID = 'speakers';
 const EMOTION_SAMPLES_COLLECTION_ID = 'speaker_emotion_samples';

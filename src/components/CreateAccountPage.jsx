@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { ID } from 'appwrite';
-import { account, databases, DATABASE_ID, REGISTERED_USERS_COLLECTION_ID } from './services/appwrite';
-import './AuthPages.css';
+import { account, databases, DATABASE_ID, REGISTERED_USERS_COLLECTION_ID } from '../services/appwrite';
+import '../styles/AuthPages.css';
 
 export default function CreateAccountPage() {
   const [name, setName] = useState('');

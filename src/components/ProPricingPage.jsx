@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import './ProPricingPage.css';
+import '../styles/ProPricingPage.css';
 
 // 📌 Variant ID Lemon Squeezy (BUKAN product ID) -- ambil dari Lemon
 // Squeezy Dashboard > Products > pilih product > klik variant-nya > lihat

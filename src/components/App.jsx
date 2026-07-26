@@ -1,13 +1,13 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { Query } from 'appwrite';
-import { segmentsToPlainText, segmentsToSrt, segmentsToVtt } from './subtitleUtils';
-import './App.css';
-import ChatBot from './components/ChatBot';
+import { segmentsToPlainText, segmentsToSrt, segmentsToVtt } from '../utils/subtitleUtils';
+import '../styles/App.css';
+import ChatBot from './ChatBot';
 import EmotionVoiceSelector from './EmotionVoiceSelector';
-import { account, appwriteFunctions, databases, storage, APPWRITE_ENDPOINT, APPWRITE_PROJECT_ID } from './appwriteClient';
-import { NLLB_LANGUAGES } from './nllbLanguages';
-import { translateText } from './translateService';
-import './Translate.css'; 
+import { account, appwriteFunctions, databases, storage, APPWRITE_ENDPOINT, APPWRITE_PROJECT_ID } from '../services/appwriteClient';
+import { NLLB_LANGUAGES } from '../utils/nllbLanguages';
+import { translateText } from '../utils/translateService';
+import '../styles/Translate.css'; 
 
 function generateFileId() {
   return `f${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`;
@@ -32,6 +32,15 @@ const MAX_VIDEO_DURATION_SECONDS = 30;
 const CONVERT_JOBS_COLLECTION_ID = 'convert_jobs';
 const CONVERT_DOCUMENT_FUNCTION_ID = '6a508da3001c54e3a019';
 const SUPPORTED_DOC_FORMATS = ['txt', 'docx', 'pdf', 'epub'];
+
+// 🎵 Mode Music (Stable Audio Open) -- pola job SAMA PERSIS kayak Document
+// Converter di atas: createDocument job 'pending' -> trigger Appwrite
+// Function async -> poll job doc sampai 'completed'/'failed'. Ganti
+// GENERATE_MUSIC_FUNCTION_ID di bawah dengan Function ID Appwrite kamu
+// setelah function-nya (lihat replicate-music-function/) di-deploy.
+const MUSIC_JOBS_COLLECTION_ID = 'music_jobs';
+const GENERATE_MUSIC_FUNCTION_ID = '6a65a547000549e49fd4';
+const MAX_MUSIC_SECONDS = 47; // batas Stable Audio Open
 
 // Parse speakers from script
 function parseSpeakersFromScript(script) {
@@ -202,6 +211,17 @@ const TtsServer = () => {
   const [convertPreviewText, setConvertPreviewText] = useState('');
   const [convertError, setConvertError] = useState('');
 
+  // 🎵 Mode Music (Stable Audio Open) -- state terpisah dari TTS, gak
+  // nyentuh voiceLibrary/speaker apapun, murni text-prompt -> audio.
+  const [musicPrompt, setMusicPrompt] = useState('');
+  const [musicNegativePrompt, setMusicNegativePrompt] = useState('lo-fi, distorted, muffled, static, Low quality');
+  const [musicSeconds, setMusicSeconds] = useState(30);
+  const [musicSteps, setMusicSteps] = useState(100);
+  const [musicSeed, setMusicSeed] = useState(-1);
+  const [isGeneratingMusic, setIsGeneratingMusic] = useState(false);
+  const [musicResultUrl, setMusicResultUrl] = useState(null);
+  const [musicError, setMusicError] = useState('');
+
   const formatDuration = (ms) => {
     const totalCentiseconds = Math.floor(ms / 10);
     const minutes = Math.floor(totalCentiseconds / 6000);
@@ -256,7 +276,7 @@ const TtsServer = () => {
             DATABASE_ID,
             USER_STATS_COLLECTION_ID,
             generateFileId(),
-            { user_id: currentUserId, generation_count: 0 }
+            { user_id: currentUserId, generation_count: 0, clone_count: 0 }
           );
           setStatsDocId(newDoc.$id);
           setGenerationCount(0);
@@ -872,6 +892,83 @@ const TtsServer = () => {
     window.open(downloadUrl, '_blank');
   };
 
+  // 🎵 Generate Music (Stable Audio Open) -- POLA SAMA PERSIS dengan
+  // handleConvertDocument di atas: createDocument job 'pending', trigger
+  // Appwrite Function secara async, lalu poll job doc-nya sampai statusnya
+  // 'completed'/'failed'. Bedanya cuma gak ada upload file (input murni
+  // text prompt), dan job field-nya prompt/negative_prompt/dst bukan
+  // source_url/sourceFormat.
+  const handleGenerateMusic = async () => {
+    if (!musicPrompt.trim()) return;
+    setMusicError('');
+    setMusicResultUrl(null);
+    setIsGeneratingMusic(true);
+
+    try {
+      const requestId = generateFileId();
+      await databases.createDocument(DATABASE_ID, MUSIC_JOBS_COLLECTION_ID, requestId, {
+        status: 'pending',
+        prompt: musicPrompt,
+        negative_prompt: musicNegativePrompt,
+        seconds_total: Number(musicSeconds),
+        num_inference_steps: Number(musicSteps),
+        seed: Number(musicSeed),
+        user_id: userId,
+      });
+
+      await fetch(`${APPWRITE_ENDPOINT}/functions/${GENERATE_MUSIC_FUNCTION_ID}/executions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Appwrite-Project': APPWRITE_PROJECT_ID,
+        },
+        body: JSON.stringify({
+          body: JSON.stringify({
+            requestId,
+            prompt: musicPrompt,
+            negativePrompt: musicNegativePrompt,
+            secondsTotal: Number(musicSeconds),
+            numInferenceSteps: Number(musicSteps),
+            seed: Number(musicSeed),
+          }),
+          async: true,
+        }),
+      });
+
+      // 🕒 Attempt budget dinaikkan lagi (120 x 1.5s = 3 menit) -- sekarang
+      // job baru 'completed' setelah Replicate selesai generate DAN
+      // berhasil callback ke webhook, jadi total waktunya sedikit lebih
+      // panjang dari sebelumnya (yang nunggu di dalam function langsung).
+      let attempts = 0;
+      const maxAttempts = 120;
+      let job = null;
+      while (attempts < maxAttempts) {
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+        job = await databases.getDocument(DATABASE_ID, MUSIC_JOBS_COLLECTION_ID, requestId);
+        if (job.status === 'completed' || job.status === 'failed') break;
+        attempts++;
+      }
+
+      if (!job || job.status !== 'completed') {
+        throw new Error(job?.error_message || 'Music generation timed out or failed.');
+      }
+
+      setMusicResultUrl(job.output_url);
+      showToast('Music generated successfully!', 3500, 'success');
+    } catch (e) {
+      console.error('Failed to generate music:', e);
+      setMusicError(e.message || 'Failed to generate music. Please try again.');
+    } finally {
+      setIsGeneratingMusic(false);
+    }
+  };
+
+  const handleDownloadMusic = () => {
+    if (!musicResultUrl) return;
+    const downloadUrl = musicResultUrl.replace('/view?', '/download?');
+    window.open(downloadUrl, '_blank');
+  };
+
   const handleToggleLike = async () => {
     if (!currentJobId) return;
     const newLikedState = !isLiked;
@@ -1477,9 +1574,100 @@ const TtsServer = () => {
                 <span className="mode-icon">📄</span>
                 <span className="mode-text">Document</span>
               </button>
+              <button 
+                onClick={() => setMode('music')}
+                className={`mode-btn ${mode === 'music' ? 'active' : ''}`}
+              >
+                <span className="mode-icon">🎵</span>
+                <span className="mode-text">Music</span>
+              </button>
             </nav>
 
-            {mode === 'convert' ? (
+            {mode === 'music' ? (
+              <div className="card">
+                <h2 className="card-title">🎵 AI Music Generator</h2>
+                <p className="card-description">Describe the music you want and let Stable Audio Open generate it.</p>
+
+                <div className="setting-group">
+                  <label>✍️ Prompt</label>
+                  <textarea
+                    value={musicPrompt}
+                    onChange={(e) => setMusicPrompt(e.target.value)}
+                    rows="4"
+                    className="form-textarea"
+                    placeholder="128 BPM tech house drum loop, warm synth pads, cinematic..."
+                  />
+                </div>
+
+                <div className="setting-group">
+                  <label>🚫 Negative Prompt</label>
+                  <input
+                    type="text"
+                    value={musicNegativePrompt}
+                    onChange={(e) => setMusicNegativePrompt(e.target.value)}
+                    className="form-input"
+                    placeholder="Low quality."
+                  />
+                </div>
+
+                <div className="setting-group">
+                  <label>⏱️ Duration: <strong>{musicSeconds}s</strong></label>
+                  <input
+                    type="range"
+                    min="1"
+                    max={MAX_MUSIC_SECONDS}
+                    step="1"
+                    value={musicSeconds}
+                    onChange={(e) => setMusicSeconds(e.target.value)}
+                    className="form-range"
+                  />
+                  <small>1s — {MAX_MUSIC_SECONDS}s (batas model)</small>
+                </div>
+
+                <div className="setting-group">
+                  <label>🎚️ Inference Steps: <strong>{musicSteps}</strong></label>
+                  <input
+                    type="range"
+                    min="10"
+                    max="200"
+                    step="10"
+                    value={musicSteps}
+                    onChange={(e) => setMusicSteps(e.target.value)}
+                    className="form-range"
+                  />
+                  <small>The higher, the better—but it takes longer.</small>
+                </div>
+
+                <div className="setting-group">
+                  <label>🌱 Seed</label>
+                  <input
+                    type="number"
+                    value={musicSeed}
+                    onChange={(e) => setMusicSeed(e.target.value)}
+                    className="form-input"
+                    placeholder="-1 untuk random"
+                  />
+                </div>
+
+                {musicError && <div className="error-box">{musicError}</div>}
+
+                <button
+                  onClick={handleGenerateMusic}
+                  disabled={!musicPrompt.trim() || isGeneratingMusic}
+                  className={`btn-full btn-primary ${isGeneratingMusic ? 'btn-loading' : ''}`}
+                >
+                  {isGeneratingMusic ? 'Generating music...' : '🎵 Generate Music'}
+                </button>
+
+                {musicResultUrl && (
+                  <div className="success-box">
+                    <h3>✅ Music Generated</h3>
+                    <audio src={musicResultUrl} controls autoPlay className="audio-player" />
+                    <button onClick={handleDownloadMusic} className="btn-full btn-success">⬇️ Download</button>
+                  </div>
+                )}
+              </div>
+            ) : mode === 'convert' ? (
               <div className="card">
                 <h2 className="card-title">📄 Document Converter</h2>
                 <p className="card-description">Upload a document (.epub, .docx, .pdf, .txt) and convert to another format.</p>

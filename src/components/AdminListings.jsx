@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
-import { account, databases, client, ID, Query, DATABASE_ID, VOICE_LISTINGS_COLLECTION_ID, UPLOAD_TO_R2_FUNCTION_ID } from './appwriteConfig';
+import { account, databases, client, ID, Query, DATABASE_ID, VOICE_LISTINGS_COLLECTION_ID, UPLOAD_TO_R2_FUNCTION_ID } from '../services/appwriteConfig';
 import { Functions } from 'appwrite';
-import './AdminListings.css';
+import '../styles/AdminListings.css';
 
 export default function AdminListings() {
   const [checkingAuth, setCheckingAuth] = useState(true);

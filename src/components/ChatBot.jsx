@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Client, Functions } from 'appwrite';
-import './ChatBot.css';
+import '../styles/ChatBot.css';
 
 // Konfigurasi Appwrite (Sama dengan yang ada di App.jsx Anda)
 const APPWRITE_ENDPOINT = 'https://fra.cloud.appwrite.io/v1';

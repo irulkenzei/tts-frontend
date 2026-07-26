@@ -2,19 +2,25 @@
    1. GLOBAL VARIABLES & BASE STYLES
    ============================================ */
 :root {
-  /* Colors */
-  --bg-primary: #0a0f1c; /* Background sangat gelap/biru malam */
+  /* Colors -- 🆕 disamain sama palette LibraryScreen.tsx (mobile app):
+     dulu semuanya monoton biru di atas background nyaris hitam, sekarang
+     dikasih variasi warna (cyan + ungu) plus teks abu-abu keunguan yang
+     lebih lembut, biar gak keliatan "gelap flat" kayak sebelumnya. */
+  --bg-primary: #0b0a14; /* Sama kayak confirmOverlay app: rgba(9,10,26) -- navy-ungu, bukan navy-biru */
   --text-primary: #ffffff;
-  --text-secondary: #94a3b8;
-  --accent-color: #3b82f6;
-  --accent-hover: #2563eb;
-  --danger-color: #ef4444;
+  --text-secondary: #8f8cab; /* Abu-abu keunguan lembut, persis dipakai app buat subTitle/emptyTitle */
+  --text-tertiary: #666478;  /* Dipakai app buat meta text (tanggal, deskripsi kecil) */
+  --accent-color: #00c2ff;   /* Cyan -- warna aksen utama app (icon, active tab, badge) */
+  --accent-hover: #00a3ff;   /* Cyan yang dipakai app buat tombol primary (useVoiceBtnPremium, playButtonCircle) */
+  --accent-purple: #9d4edd;  /* Aksen ungu kedua -- dipakai app buat variasi (auraRed, ikon kategori lain) */
+  --danger-color: #ff4a6b;   /* Merah-pink app (confirmDeleteBtn), bukan merah polos */
   --success-color: #10b981;
   
   /* Glassmorphism Variables */
-  --glass-bg: rgba(17, 24, 39, 0.45);
+  --glass-bg: rgba(19, 22, 37, 0.5); /* Sedikit dinaikkan opacity-nya biar card lebih "berisi", gak nge-blend ke background */
   --glass-border: rgba(255, 255, 255, 0.08);
   --glass-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3);
+  --border-solid: #252943; /* Border lebih pekat buat elemen yang butuh pemisahan jelas (search bar, chip, modal) -- persis warna border card di app */
   
   /* Layout */
   --radius-lg: 16px;
@@ -30,9 +36,32 @@
 
 body {
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-  background-color: var(--bg-primary);
   color: var(--text-primary);
   line-height: 1.5;
+  position: relative;
+
+  /* 🆕 Base gradient: solid dark dulu, ditambah 2 "blob" cahaya lembut
+     (cyan + ungu) ala aura di LibraryScreen.tsx, ditempatkan pojok kiri-atas
+     & kanan-bawah biar gak nabrak konten di tengah. */
+  background-color: var(--bg-primary);
+  background-image:
+    radial-gradient(circle at 12% 18%, rgba(0, 194, 255, 0.14), transparent 42%),
+    radial-gradient(circle at 88% 82%, rgba(157, 78, 221, 0.12), transparent 42%);
+  background-attachment: fixed;
+}
+
+/* 🆕 Pola background: ikon mic + garis wave, di-tile berulang, opacity
+   SANGAT tipis (0.04) supaya cuma keliatan kayak tekstur halus, gak
+   ganggu keterbacaan teks/card di atasnya. Ditaruh di pseudo-element
+   terpisah (bukan langsung di background body) biar gampang diatur
+   opacity & z-index-nya sendiri, gak nyampur sama gradient di atas. */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  opacity: 0.04;
 }
 
 .content-wrapper {
@@ -54,7 +83,7 @@ body {
    ============================================ */
 .card {
   /* Background biru gelap semi-transparan */
-  background: rgba(20, 24, 41, 0.4); 
+  background: linear-gradient(135deg, rgba(0, 194, 255, 0.10), rgba(157, 78, 221, 0.08)), var(--glass-bg);
   /* Efek blur kaca pada elemen di belakangnya */
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
@@ -69,7 +98,7 @@ body {
 
 .card:hover {
   border-color: rgba(255, 255, 255, 0.2);
-  box-shadow: 0 8px 32px 0 rgba(0, 212, 255, 0.15);
+  box-shadow: 0 8px 32px 0 rgba(0, 194, 255, 0.15);
 }
 
 /* Opsional: Beri efek glass juga pada menu navigasi */
@@ -90,7 +119,9 @@ body {
   font-size: 2.5rem;
   font-weight: 800;
   margin-bottom: 0.5rem;
-  background: linear-gradient(to right, #60a5fa, #a78bfa);
+  /* 🆕 gradient cyan -> ungu, persis pasangan warna aksen di LibraryScreen
+     (auraBlue #00C2FF + auraRed #9D4EDD) -- dulu biru ke ungu-pucat */
+  background: linear-gradient(to right, var(--accent-color), var(--accent-purple));
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
 }
@@ -121,7 +152,7 @@ body {
    4. GLASSMORPHISM CARDS
    ============================================ */
 .card, .result-card {
-  background: var(--glass-bg);
+  background: linear-gradient(135deg, rgba(0, 194, 255, 0.10), rgba(157, 78, 221, 0.08)), var(--glass-bg);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
   border: 1px solid var(--glass-border);
@@ -133,7 +164,7 @@ body {
 
 .card:hover {
   border-color: rgba(255, 255, 255, 0.15);
-  box-shadow: 0 8px 32px 0 rgba(59, 130, 246, 0.1);
+  box-shadow: 0 8px 32px 0 rgba(0, 194, 255, 0.1);
 }
 
 .card-title {
@@ -185,7 +216,7 @@ body {
 .mode-btn.active {
   background: var(--accent-color);
   border-color: var(--accent-hover);
-  box-shadow: 0 4px 15px rgba(59, 130, 246, 0.4);
+  box-shadow: 0 4px 15px rgba(0, 194, 255, 0.4);
 }
 
 /* ============================================
@@ -205,7 +236,7 @@ body {
 /* Base style untuk semua input */
 .form-input, .form-select, .form-file, .form-textarea {
   width: 100%;
-  background: rgba(0, 0, 0, 0.2);
+  background: rgba(108, 104, 104, 0.2);
   border: 1px solid var(--glass-border);
   color: var(--text-primary);
   padding: 12px;
@@ -218,7 +249,7 @@ body {
 .form-input:focus, .form-select:focus, .form-textarea:focus {
   outline: none;
   border-color: var(--accent-color);
-  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+  box-shadow: 0 0 0 2px rgba(0, 194, 255, 0.2);
 }
 
 /* Textarea khusus */
@@ -322,7 +353,7 @@ button {
    8. RECORDING & AUDIO PLAYERS
    ============================================ */
 .recording-section, .music-section {
-  background: rgba(0, 0, 0, 0.15);
+  background: linear-gradient(135deg, rgba(0, 194, 255, 0.10), rgba(157, 78, 221, 0.08)), var(--glass-bg);
   padding: 16px;
   border-radius: var(--radius-md);
   margin-top: 20px;
@@ -453,7 +484,7 @@ button {
   animation: slideIn 0.3s ease;
   backdrop-filter: blur(8px);
 }
-.toast-info { background: rgba(59, 130, 246, 0.9); }
+.toast-info { background: rgba(0, 162, 255, 0.9); }
 .toast-success { background: rgba(16, 185, 129, 0.9); }
 .toast-warning { background: rgba(245, 158, 11, 0.9); }
 .toast-error { background: rgba(239, 68, 68, 0.9); }

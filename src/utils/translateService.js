@@ -1,5 +1,5 @@
 import { ID } from 'appwrite';
-import { appwriteFunctions, databases, DATABASE_ID } from './appwriteClient';
+import { appwriteFunctions, databases, DATABASE_ID } from '../services/appwriteClient';
 
 // 🌍 TERJEMAHAN TEKS (NLLB-200) -- versi web, port dari services/
 // replicateService.ts (mobile), fungsi `translateText`. Pola start/check

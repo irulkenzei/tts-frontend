@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom'; // Tambahkan ini
-import { account } from './services/appwrite';
-import './AuthPages.css';
+import { account } from '../services/appwrite';
+import '../styles/AuthPages.css';
 
 const DELETE_ACCOUNT_FUNCTION_URL = import.meta.env.VITE_DELETE_ACCOUNT_FUNCTION_URL;
 

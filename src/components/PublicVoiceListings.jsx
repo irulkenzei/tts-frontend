@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
-import { databases, Query, DATABASE_ID, VOICE_LISTINGS_COLLECTION_ID } from './appwriteConfig';
-import './PublicVoiceListings.css';
+import { databases, Query, DATABASE_ID, VOICE_LISTINGS_COLLECTION_ID } from '../services/appwriteConfig';
+import '../styles/PublicVoiceListings.css';
 
 function ListingCard({ listing }) {
   const audioRef = useRef(null);

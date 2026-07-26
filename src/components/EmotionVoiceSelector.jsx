@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Query } from 'appwrite';
-import { databases, DATABASE_ID } from './appwriteClient';
-import './EmotionVoiceSelector.css';
+import { databases, DATABASE_ID } from '../services/appwriteClient';
+import '../styles/EmotionVoiceSelector.css';
 
 const EMOTION_SAMPLES_COLLECTION_ID = 'speaker_emotion_samples';
 

@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import { account } from './appwriteConfig';
-import './AdminListings.css'; // reuse style form yang udah ada (input, button, dst)
+import { account } from '../services/appwriteConfig';
+import '../styles/AdminListings.css'; // reuse style form yang udah ada (input, button, dst)
 
 export default function ResetPassword() {
   const params = new URLSearchParams(window.location.search);

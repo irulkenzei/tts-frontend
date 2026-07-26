@@ -1,4 +1,4 @@
-import './ProPricingPage.css';
+import '../styles/ProPricingPage.css';
 
 export default function PricingSuccessPage() {
   // Lemon Squeezy tidak kirim query param apa pun (defaultnya success),
