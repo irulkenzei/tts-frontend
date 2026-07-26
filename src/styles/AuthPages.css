@@ -157,6 +157,13 @@
   cursor: pointer;
   font-family: inherit;
   transition: var(--transition-fast, all 0.2s ease);
+<<<<<<< HEAD:src/styles/AuthPages.css
+=======
+}
+.danger-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+>>>>>>> 795bd0a4f3a3bea87c6bb27393d5f02034a1fd84:src/AuthPages.css
 }
 .danger-btn:disabled {
   opacity: 0.6;

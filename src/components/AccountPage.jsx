@@ -10,10 +10,14 @@ export default function AccountPage() {
   const [loading, setLoading] = useState(true);
   const [showConfirm, setShowConfirm] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+<<<<<<< HEAD:src/components/AccountPage.jsx
   const [error, setError] = useState('');
   
   // Inisialisasi navigasi
   const navigate = useNavigate();
+=======
+  const [error, setError] = useState(''); 
+>>>>>>> 795bd0a4f3a3bea87c6bb27393d5f02034a1fd84:src/CreateAccountPage.jsx
 
   useEffect(() => {
     (async () => {
