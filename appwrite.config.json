@@ -30,5 +30,25 @@
             "deploymentRetention": 0,
             "path": "functions/gemini-chatbot"
         }
+    ],
+    "sites": [
+        {
+            "$id": "6a573408001bf149d2fe",
+            "name": "tts-frontend",
+            "path": ".",
+            "framework": "react",
+            "logging": true,
+            "timeout": 30,
+            "buildRuntime": "node-22",
+            "adapter": "static",
+            "installCommand": "npm cache clean --force && npm install",
+            "buildCommand": "npm run build",
+            "outputDirectory": "./dist",
+            "fallbackFile": "index.html",
+            "startCommand": "bash helpers/server.sh",
+            "buildSpecification": "s-2vcpu-2gb",
+            "runtimeSpecification": "s-0.5vcpu-512mb",
+            "deploymentRetention": 0
+        }
     ]
-} 
+}
